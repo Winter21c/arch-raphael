@@ -56,6 +56,26 @@ SSH_OPTS=(
 info() { [ "$QUIET" = 1 ] || printf '%s\n' "$*"; }
 
 # 本机上 172.16.42.x 的地址（设备侧 dnsmasq 分配的 DHCP 地址）
+# 找一个像 USB 网卡（NCM/RNDIS）的接口
+usb_iface() {
+    ip -o link show 2>/dev/null | awk -F': ' '{print $2}' | grep -E '^(usb|enp[^ ]*u|enx)' | head -1
+}
+
+# 本机若还没有 172.16.42.x 地址，尝试让 NetworkManager 拉起 DHCP；失败则打印手动命令
+ensure_host_ip() {
+    [ -n "$(host_ip)" ] && return 0
+    local ifc
+    ifc=$(usb_iface)
+    [ -n "$ifc" ] || return 0
+    info "本机尚未获得 172.16.42.x 地址，尝试在 $ifc 上 DHCP…"
+    if command -v nmcli >/dev/null 2>&1; then
+        nmcli -w 20 device connect "$ifc" >/dev/null 2>&1 || true
+    fi
+    [ -n "$(host_ip)" ] && { info "已获得地址：$(host_ip)"; return 0; }
+    info "仍未获得地址，可手动：sudo ip addr add 172.16.42.2/24 dev $ifc && sudo ip link set $ifc up"
+    return 0
+}
+
 host_ip() {
     ip -4 -o addr show 2>/dev/null | awk '{print $4}' | grep -m1 '^172\.16\.42\.' || true
 }
