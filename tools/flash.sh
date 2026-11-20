@@ -2,11 +2,13 @@
 # ============================================================================
 # tools/flash.sh —— 把根文件系统镜像刷入 Redmi K20 Pro 的 userdata 分区
 #
-# 用法: sudo tools/flash.sh [--no-reboot] <rootfs.img>
+# 用法: sudo tools/flash.sh [--boot <boot.img>] [--no-reboot] <rootfs.img>
+#   --boot IMG    先把 Android boot image（内核+initramfs+DTB）刷进 boot 分区，
+#                 这样原厂 ABL 会直接引导 Linux（推荐；无需 U-Boot）
 #   --no-reboot   刷完不自动 fastboot reboot（重启时机由你决定）
 #   -h, --help    显示本帮助
 #
-# 前提: 设备已进 fastboot（关机后「音量下 + 电源」），且已刷入支持该引导链的 U-Boot
+# 前提: 设备已进 fastboot（关机后「音量下 + 电源」）
 # 注意: 会覆盖 userdata（Android 的 userdata 一并丢），8-10G 镜像需几分钟
 #
 # 刷完先 tools/wait-boot.sh 等 SSH，再 tools/device-test.sh 逐项验证。
@@ -14,12 +16,14 @@
 set -euo pipefail
 
 IMG=''
+BOOT=''
 REBOOT=1
 
 while [ $# -gt 0 ]; do
     case "$1" in
+        --boot)      BOOT=${2:-}; shift 2 ;;
         --no-reboot) REBOOT=0; shift ;;
-        -h|--help)   sed -n '3,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help)   sed -n '3,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         -*)          echo "未知参数: $1（--help 看用法）" >&2; exit 2 ;;
         *)           IMG=$1; shift ;;
     esac
@@ -35,6 +39,12 @@ if ! fastboot devices 2>/dev/null | grep -qw fastboot; then
     echo "  已在系统里的话：docs/INSTALL.md 第 12 节「恢复」" >&2
     fastboot devices >&2 || true
     exit 1
+fi
+
+if [ -n "$BOOT" ]; then
+    [ -f "$BOOT" ] || { echo "boot 镜像不存在: $BOOT" >&2; exit 1; }
+    echo "==> 刷写 $BOOT（$(du -h "$BOOT" | cut -f1)）到 boot 分区（内核+initramfs+DTB，ABL 直接引导）"
+    fastboot flash boot "$BOOT"
 fi
 
 SIZE=$(du -h "$IMG" | cut -f1)
