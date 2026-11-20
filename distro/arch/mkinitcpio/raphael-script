@@ -1,0 +1,42 @@
+#!/usr/bin/ash
+# shellcheck shell=dash
+# ============================================================================
+# mkinitcpio 运行时 hook（装到 /etc/initcpio/hooks/raphael，运行时为 /hooks/raphael）
+#
+# 时机：mkinitcpio 的 /init 依次执行 HOOKS 里各 hook 的 run_hook，然后才
+#       resolve_device(root=UUID=...) → mount_root。本 hook 在 udev 的 run_hook
+#       （启动 udevd、触发 uevent 并 settle）与 block（模块）之后、filesystems
+#       之前执行，因此 /dev/disk/by-partlabel 已就绪，且根文件系统尚未解析。
+#
+# 映射逻辑只有一份：/usr/lib/raphael-subpartition
+# （= overlay/initramfs/raphael-subpartition，路径由 lib/raphael-initramfs.sh 的
+#  RAPHAEL_INITRAMFS_SCRIPT 指定，由 mkinitcpio 安装 hook 装进 initramfs）。
+# 本文件只做调度与善后。
+# ============================================================================
+
+run_hook() {
+    local rc
+
+    if [ ! -f /usr/lib/raphael-subpartition ]; then
+        msg "raphael: /usr/lib/raphael-subpartition 缺失，跳过嵌套 GPT 映射"
+        return 0
+    fi
+
+    msg "raphael: mapping userdata subpartitions (4096-byte sectors)"
+
+    # 子进程执行：脚本里的任何 exit 都不会终止 PID1（/init）
+    sh /usr/lib/raphael-subpartition
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+        msg "raphael: subpartition mapping returned $rc (falling back to default root detection)"
+    fi
+
+    # 新出现的 loop 分区需要 udev 刷新 /dev/disk/by-* （resolve_device 也会 blkid 直查）
+    if command -v udevadm >/dev/null 2>&1; then
+        udevadm settle
+    fi
+
+    return 0
+}
+
+# vim: set ft=sh ts=4 sw=4 et:

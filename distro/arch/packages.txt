@@ -1,0 +1,72 @@
+# ============================================================================
+# Arch Linux ARM (aarch64) —— 基础系统 + 手机硬件包
+# 安装者：distro/arch/distro.sh:distro_packages
+# 格式：每行一个包名；# 之后为注释；空行忽略。
+# 所有包名已对照 ALARM core / extra / alarm 仓库数据库（core.db / extra.db /
+# alarm.db，2026-11 快照）逐一核对存在。
+# ============================================================================
+
+# ---- 基础系统 --------------------------------------------------------------
+base                    # filesystem/pacman/systemd/util-linux/iproute2/shadow 等
+mkinitcpio              # initramfs 生成（提供 /etc/initcpio/{install,hooks}）
+sudo
+openssh                 # sshd + ssh 客户端（USB NCM 调试）
+tzdata                  # /usr/share/zoneinfo（configure_common 建 localtime 链接）
+less
+nano
+htop
+jq
+curl
+wget
+rsync
+tree
+bash-completion
+
+# ---- 网络 ------------------------------------------------------------------
+networkmanager
+wpa_supplicant          # NetworkManager 的 WPA 后端（WCN3990 / ath10k）
+wireless-regdb          # 无线管制域数据库
+iw                      # 无线调试
+dnsmasq                 # USB-NCM 网络共享 DHCP/DNS（lib/hardware.sh 使用）
+nftables                # NM 防火墙后端
+
+# ---- 蓝牙 ------------------------------------------------------------------
+bluez
+bluez-utils             # bluetoothctl
+
+# ---- 音频（PipeWire）------------------------------------------------------
+pipewire
+pipewire-pulse
+pipewire-alsa
+wireplumber              # 会话/策略管理器（lib/hardware.sh 写入其配置）
+alsa-ucm-conf           # UCM 搜索路径（设备 UCM 由 kernel-deb 的 alsa.deb 覆盖）
+alsa-utils              # aplay/alsamixer 调试
+
+# ---- 图形 / GPU（Adreno 640 / freedreno）----------------------------------
+mesa
+vulkan-freedreno        # Adreno Vulkan（TURNIP）
+vulkan-icd-loader
+libdrm
+
+# ---- 存储 / 文件系统工具 ---------------------------------------------------
+btrfs-progs             # raphael-growfs.service 首启扩容
+dosfstools              # mkfs.vfat（ESP 校验）
+e2fsprogs
+parted                  # 嵌套 GPT p2 首启扩展（initramfs 内同样使用）
+
+# ---- 电源 / 内存 -----------------------------------------------------------
+zram-generator          # /etc/systemd/zram-generator.conf（由 lib/configure.sh 写入）
+
+# ---- 会话 / 权限 -----------------------------------------------------------
+polkit                  # quickshell/dms 提权对话框
+accountsservice         # 用户信息（greeter / 锁屏）
+
+# ---- 硬件调试 --------------------------------------------------------------
+usbutils
+pciutils
+i2c-tools
+evtest
+libinput
+
+# ---- 固件 ------------------------------------------------------------------
+linux-firmware          # GPU/Wi-Fi/蓝牙/Venus 固件（设备专用固件由 kernel-deb 覆盖）

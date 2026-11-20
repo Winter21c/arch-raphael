@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# ============================================================================
+# mkinitcpio 安装 hook（装到 /etc/initcpio/install/raphael）
+#
+# 把“把 userdata 分区映射成 4096 字节扇区 loop 设备（嵌套 GPT）”所需的一切
+# 装进 initramfs：
+#   /usr/lib/raphael-subpartition  ← overlay/initramfs/raphael-subpartition
+#                                    （由 distro_initramfs 先安装到镜像内）
+#   /hooks/raphael                 ← /etc/initcpio/hooks/raphael（运行时入口）
+#   util-linux losetup/blkid/partprobe/parted + ldd 依赖
+#
+# /etc/mkinitcpio.conf 的 HOOKS 中必须排在 udev/block 之后、filesystems 之前：
+# mkinitcpio 的 /init 先 run_hookfunctions $HOOKS，再 resolve_device/mount_root，
+# 所以这段代码一定在根文件系统挂载之前执行。
+# ============================================================================
+
+build() {
+    local tool bin
+
+    # busybox 的 applet 是 /usr/bin/<name> -> busybox 的符号链接。install(1) 会顺着
+    # 符号链接写穿 busybox 本体，让所有 applet（含 /init 用的 sh）都变成该二进制。
+    # 这与 Debian zz-busybox 的硬链接问题同源：先解除链接，再放真正的 util-linux 版本。
+    for tool in /usr/bin/losetup /usr/sbin/losetup \
+                /usr/bin/blkid /usr/sbin/blkid \
+                /usr/bin/partprobe /usr/sbin/partprobe \
+                /usr/bin/parted /usr/sbin/parted; do
+        rm -f "${BUILDROOT}$tool"
+    done
+
+    # util-linux 工具：add_binary 自己解析 ldd 依赖（等价 initramfs-tools 的 copy_exec）
+    for tool in losetup blkid partprobe parted; do
+        bin="$(PATH=/usr/bin:/usr/sbin:/bin:/sbin type -P "$tool" 2>/dev/null || true)"
+        if [[ -n "$bin" ]]; then
+            add_binary "$bin"
+        else
+            warning "raphael: 未找到 $tool，嵌套 GPT 映射可能失败"
+        fi
+    done
+
+    # 映射脚本本体（必须已经在镜像里；distro_initramfs 负责安装）
+    if [[ -f /usr/lib/raphael-subpartition ]]; then
+        add_file /usr/lib/raphael-subpartition /usr/lib/raphael-subpartition 0755
+    else
+        error "raphael: 缺少 /usr/lib/raphael-subpartition"
+        return 1
+    fi
+
+    # 运行时入口：/etc/initcpio/hooks/raphael -> /hooks/raphael（含 run_hook）
+    add_runscript
+}
+
+help() {
+    cat <<HELPEOF
+raphael: 把 Android userdata 分区映射成 loop 设备（4096 字节逻辑扇区）以暴露
+内嵌 GPT 的 p1=Boot(ESP)/p2=Root(btrfs)，并在挂载根文件系统之前执行。
+依赖 util-linux 的 losetup --sector-size（busybox 版不支持）。
+必须放在 HOOKS 中 udev/block 之后、filesystems 之前。
+HELPEOF
+}
+
+# vim: set ft=sh ts=4 sw=4 et:

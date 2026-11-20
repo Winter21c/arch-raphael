@@ -1,0 +1,10 @@
+# 构建产物与缓存
+/work/
+/cache/
+/out/
+rootfs.img
+*.img
+*.7z
+*.sha256
+/refs/
+*.log

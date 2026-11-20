@@ -1,0 +1,42 @@
+# ============================================================================
+# Fedora 44 (aarch64) 基础系统包
+#
+# 全部名称已对照 Fedora 44 Everything/aarch64 repodata（releases + updates）确认存在。
+# 内核/固件/DTB/ALSA UCM 不在这里：它们来自预编译 deb（lib/kernel.sh）。
+# dnf 侧已用 --setopt=excludepkgs 排除 kernel*，避免装第二套内核。
+# ============================================================================
+
+# ---- 发行版标识 ------------------------------------------------------------
+fedora-release fedora-repos fedora-gpg-keys
+
+# ---- systemd / 包管理 / 基础用户态 ----------------------------------------
+systemd systemd-udev systemd-boot-unsigned
+dnf5 rpm bash coreutils util-linux kmod
+glibc glibc-locale-source tzdata
+shadow-utils setup filesystem rootfiles
+diffutils grep sed gawk findutils tar gzip xz zstd cpio less nano which hostname
+procps-ng psmisc iproute iputils bash-completion
+
+# ---- 引导 / 文件系统 / initramfs（dracut 依赖 cpio,zstd,binutils,kmod）----
+dracut binutils e2fsprogs btrfs-progs dosfstools parted gdisk
+
+# ---- 网络 ----------------------------------------------------------------
+NetworkManager NetworkManager-wifi NetworkManager-libnm wpa_supplicant
+openssh-server curl dnsmasq nftables
+bluez ModemManager libqmi-utils
+
+# ---- 音频（UCM 配置由 lib/kernel.sh 从 alsa deb 覆盖）---------------------
+pipewire pipewire-libs wireplumber pipewire-alsa pipewire-pulseaudio
+alsa-utils alsa-ucm
+
+# ---- 图形 / Vulkan / VA-API（venus 驱动由 hardware 阶段配置）-------------
+mesa-dri-drivers mesa-vulkan-drivers mesa-libEGL vulkan-loader
+libva libva-utils
+
+# ---- 字体（中日韩 + emoji；zh_CN 界面必需）-------------------------------
+fontconfig freetype google-noto-sans-cjk-fonts google-noto-emoji-fonts dejavu-sans-fonts
+
+# ---- 系统服务 ------------------------------------------------------------
+polkit accountsservice
+xdg-desktop-portal xdg-desktop-portal-gtk
+sudo zram-generator iio-sensor-proxy rtkit upower

@@ -1,0 +1,34 @@
+# ============================================================================
+# Fedora 44 (aarch64) 桌面包
+#
+# 全部名称已对照 Fedora 44 Everything/aarch64 repodata（releases + updates）确认存在。
+#
+# 关于 Qt Quick Controls：Fedora 44 的 Qt 6.11 已把 QuickControls 并入 qt6-qtdeclarative
+# （该包提供 /usr/lib64/qt6/qml/QtQuick/Controls/qmldir），因此 **F44 没有
+# qt6-qtquickcontrols2 这个包**，装了 qt6-qtdeclarative 即可满足 DMS 的 QtQuick.Controls。
+# ============================================================================
+
+# ---- 合成器 --------------------------------------------------------------
+niri
+
+# ---- quickshell 运行时（DMS 依赖 qs 可执行 + QML 模块）-------------------
+quickshell
+qt6-qtbase qt6-qtbase-gui qt6-qtdeclarative qt6-qtwayland qt6-qt5compat
+qt6-qtsvg qt6-qtmultimedia
+
+# ---- GTK / 主题 / 虚拟键盘依赖 -------------------------------------------
+gtk3 gtk4 gtk-layer-shell
+
+# ---- 启动器 / 终端 / 桌面小工具 ------------------------------------------
+fuzzel kitty brightnessctl playerctl wl-clipboard grim slurp
+wayland-utils xkeyboard-config xdg-user-dirs
+
+# ---- portal：文件选择走 gtk 后端，ScreenCast 走 gnome 后端（niri 官方建议）-
+xdg-desktop-portal-gnome
+
+# ---- 输入法（INSTALL_IME=1 时由 lib/desktop.sh 写 environment.d）---------
+fcitx5 fcitx5-chinese-addons fcitx5-configtool fcitx5-gtk fcitx5-qt fcitx5-autostart
+
+# ---- 登录管理（greetd 包内含 /etc/pam.d/greetd 与 greeter 用户的 sysusers）-
+# dux-greeter 本体与 /etc/greetd/config.toml 由 lib/desktop.sh 安装
+greetd

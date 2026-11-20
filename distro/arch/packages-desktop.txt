@@ -1,0 +1,58 @@
+# ============================================================================
+# Arch Linux ARM (aarch64) —— 桌面层包
+# 安装者：distro/arch/distro.sh:distro_desktop（dms/dux-greeter 本体由 lib/desktop.sh 装）
+# 所有包名已对照 ALARM extra 仓库数据库逐一核对存在。
+# ============================================================================
+
+# ---- 合成器 / shell / 虚拟键盘 ---------------------------------------------
+niri                    # 默认合成器（niri / niri-session / niri.desktop）
+quickshell              # 提供 /usr/bin/qs 与 /usr/bin/quickshell（dms run 依赖 qs）
+squeekboard             # 虚拟键盘（greetd 登录界面与用户会话都要用）
+gtk-layer-shell
+fuzzel                  # 应用启动器
+kitty                   # 终端
+# 备选合成器（COMPOSITOR=sway）
+sway
+swaybg
+waybar
+mako                    # 通知
+
+# ---- Qt6 / QML 运行时（dms QML 依赖）--------------------------------------
+# dms 实际 import：QtQuick、QtQuick.Controls、QtQuick.Shapes、QtQuick.Effects、
+# QtMultimedia、QtCore、Qt.labs.folderlistmodel
+qt6-base
+qt6-declarative         # 提供 QtQuick.Controls 2 / QtQuick.Effects / Qt.labs.folderlistmodel
+# 注意：ALARM 没有 qt6-quickcontrols2 这个包名 —— QtQuick.Controls 2 已并入
+#       qt6-declarative（已核对 6.12.0-4 的 usr/lib/qt6/qml/QtQuick/Controls/**）
+qt6-wayland
+qt6-svg
+qt6-5compat
+qt6-shadertools
+qt6-multimedia
+qt6-multimedia-ffmpeg   # 满足 qt6-multimedia 的 qt6-multimedia-backend 依赖
+
+# ---- 字体 ------------------------------------------------------------------
+fontconfig
+noto-fonts
+noto-fonts-cjk          # 中文（zh_CN）界面与文档
+ttf-dejavu
+
+# ---- 门户 / XDG ------------------------------------------------------------
+xdg-desktop-portal
+xdg-desktop-portal-wlr  # screencast（niri/wlroots）
+xdg-desktop-portal-gtk
+xdg-utils
+xdg-user-dirs
+
+# ---- 显示 / 截图 / 输入工具 ------------------------------------------------
+wlr-randr               # 运行时旋转/分辨率
+grim                    # 截图
+slurp
+wl-clipboard
+brightnessctl
+iio-sensor-proxy        # 自动旋转（传感器存在时生效）
+imv                     # 看图（截图后用）
+
+# ---- 登录管理器 ------------------------------------------------------------
+greetd                  # 提供 pam.d/greetd 与 sysusers.d/greetd.conf（greeter 用户自动创建）
+greetd-tuigreet         # 兜底 greeter（桌面层的 dms-greeter 不可用时）

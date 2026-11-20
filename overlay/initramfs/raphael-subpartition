@@ -1,0 +1,97 @@
+#!/bin/sh
+# raphael-subpartition: 把 Android 的 userdata 分区映射成 loop（4096 字节逻辑扇区），
+# 暴露内嵌 GPT 的 p1=Boot(ESP) / p2=Root(btrfs)，并把 p2 扩展到分区末尾。
+# 由 mkinitcpio hook / dracut 模块在挂载根文件系统之前调用。
+# 幂等、失败不影响启动（找不到根时交给正常的根设备探测）。
+
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+msg() { echo "raphael: $*"; }
+
+# 选择 util-linux 版工具（busybox applet 不支持 --sector-size）
+pick() {
+    for p in "$@"; do
+        [ -x "$p" ] && { echo "$p"; return 0; }
+    done
+    return 1
+}
+
+LOSETUP=$(pick /usr/sbin/losetup /usr/bin/losetup /sbin/losetup /bin/losetup) || LOSETUP=losetup
+BLKID=$(pick /usr/sbin/blkid /usr/bin/blkid /sbin/blkid /bin/blkid) || BLKID=blkid
+PARTED=$(pick /usr/sbin/parted /usr/bin/parted /sbin/parted /bin/parted) || PARTED=""
+PARTPROBE=$(pick /usr/sbin/partprobe /usr/bin/partprobe /sbin/partprobe /bin/partprobe) || PARTPROBE=""
+
+command -v modprobe >/dev/null 2>&1 && modprobe loop 2>/dev/null
+
+ROOTUUID=""
+for a in $(cat /proc/cmdline 2>/dev/null); do
+    case "$a" in
+        root=UUID=*) ROOTUUID=${a#root=UUID=} ;;
+    esac
+done
+
+have_root() {
+    [ -n "$ROOTUUID" ] || return 1
+    "$BLKID" --uuid "$ROOTUUID" >/dev/null 2>&1
+}
+
+map_dev() { "$LOSETUP" --find --show -P --sector-size 4096 "$1" 2>/dev/null; }
+unmap()   { [ -n "$1" ] && "$LOSETUP" -d "$1" 2>/dev/null; }
+
+LOOPDEV=""
+
+# 1) 首选 /dev/disk/by-partlabel/userdata（udev 已就绪时；mkinitcpio 场景）
+i=0
+while [ ! -e /dev/disk/by-partlabel/userdata ] && [ "$i" -lt 50 ] && [ -z "$ROOTUUID" ]; do
+    i=$((i+1)); sleep 0.1
+done
+if [ -e /dev/disk/by-partlabel/userdata ]; then
+    cand=$(map_dev /dev/disk/by-partlabel/userdata)
+    if [ -n "$cand" ]; then
+        if have_root; then
+            LOOPDEV="$cand"
+            msg "mapped userdata -> $cand"
+        else
+            unmap "$cand"
+            msg "userdata mapped but root UUID $ROOTUUID not found on it"
+        fi
+    fi
+fi
+
+# 2) 兜底：遍历所有分区逐个尝试（dracut pre-udev 阶段还没有 by-partlabel）
+if [ -z "$LOOPDEV" ]; then
+    for b in /sys/class/block/*; do
+        [ -d "$b" ] || continue
+        b=$(basename "$b")
+        case "$b" in loop*|ram*|zram*|dm-*|md*) continue ;; esac
+        [ -e "/sys/class/block/$b/partition" ] || continue
+        cand=$(map_dev "/dev/$b")
+        [ -n "$cand" ] || continue
+        if [ -z "$ROOTUUID" ]; then
+            LOOPDEV="$cand"; break
+        fi
+        if have_root; then
+            LOOPDEV="$cand"
+            msg "mapped /dev/$b -> $cand"
+            break
+        fi
+        unmap "$cand"
+    done
+fi
+
+command -v udevadm >/dev/null 2>&1 && udevadm settle 2>/dev/null
+[ -n "$LOOPDEV" ] || { msg "no userdata subpartition mapped"; exit 0; }
+[ -e "${LOOPDEV}p2" ] || { msg "warning: ${LOOPDEV}p2 missing"; exit 0; }
+
+# 3) 内嵌 GPT 的 p2 扩展到镜像末尾（镜像刷入 ~48G userdata 后只占 8-10G）
+if [ -n "$PARTED" ]; then
+    if LC_ALL=C "$PARTED" -s "$LOOPDEV" print 2>/dev/null | grep -qi "free space"; then
+        msg "extending root partition to 100%"
+        LC_ALL=C "$PARTED" -f -s "$LOOPDEV" resizepart 2 100% 2>/dev/null || true
+        [ -n "$PARTPROBE" ] && "$PARTPROBE" "$LOOPDEV" 2>/dev/null
+        command -v udevadm >/dev/null 2>&1 && udevadm settle 2>/dev/null
+    fi
+fi
+
+msg "root partition ready: ${LOOPDEV}p2"
+exit 0
