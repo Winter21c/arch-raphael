@@ -47,6 +47,10 @@ _fedora_dnf() {
         --installroot="$MNT"
         --releasever="$FEDORA_RELEASE"
         --forcearch="$FEDORA_ARCH"
+        # dnf5 在 --installroot 下默认不读宿主 /etc/yum.repos.d，会报
+        # "No matching repositories for *, *"；显式要求使用宿主配置与仓库目录
+        --use-host-config
+        --setopt=reposdir=/etc/yum.repos.d
         --setopt=install_weak_deps=False
         --setopt=tsflags=nodocs
         --setopt=keepcache=False
