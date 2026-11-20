@@ -203,3 +203,21 @@ sudo umount /mnt && sudo losetup -D
 # 只看分区表
 fdisk -l -b 4096 rootfs.img
 ```
+
+## 15. 为什么 boot.img 里的内核要「解包」
+
+预编译内核 deb 里的 `/boot/vmlinuz-*` 在 arm64 上是 **EFI zboot 容器**（文件头是 `MZ` + `zimg`，内部 gzip 压缩了一份原始 Image）。
+这种镜像可以由 U-Boot / systemd-boot 作为 EFI 应用直接执行，但**原厂 ABL 不能**：Android boot image 的 kernel 字段必须是
+原始 arm64 `Image`（偏移 56 处为 `0x644d5241`，即 ASCII `ARMd`）。
+
+`tools/mkbootimg.py` 会自动识别并解包：
+
+| 输入 | 处理 |
+|---|---|
+| `MZ` + `zimg`（EFI zboot） | 按头部 offset/size 取出内嵌载荷，按压缩类型 gzip/zstd 解压 |
+| gzip（`1f 8b`） | 直接解压 |
+| 其它 | 视为原始 Image |
+
+解包后会校验 `ARMd` 魔数，不匹配直接报错（避免打出一个刷进去必然起不来的包）。
+当前 Arch 镜像的 boot.img：内核 28.2MB（原始 Image）+ initramfs 14.9MB + DTB 0.1MB ≈ 43MB。
+
