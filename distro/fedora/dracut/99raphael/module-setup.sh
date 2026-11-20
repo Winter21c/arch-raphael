@@ -7,16 +7,10 @@
 #   p1 = Boot(FAT32 ESP) / p2 = Root(btrfs @/@home)
 # 让 cmdline 里的 root=UUID=<ROOT_UUID> 能被 dracut 的 rootfs-block 解析到。
 #
-# 挂在 pre-udev 阶段（udevd 启动之前）：loop 设备建好后，udevd 的冷插拔会自己扫出
-# loop0p1/p2 并生成 /dev/disk/by-uuid 符号链接，dracut 后续的 pre-mount 才能按 UUID 找到根。
-#
-# 实际映射/扩容逻辑不在这里：由公共层的 overlay/initramfs/raphael-subpartition 提供
-# （distro_initramfs 会把它装到镜像 /usr/lib/raphael-subpartition），本模块只负责把它
-# 和它需要的工具一起塞进 initramfs。
+# 映射逻辑只有一份：overlay/initramfs/raphael-subpartition
 # ============================================================================
 
 check() {
-    # 无内核版本/硬件条件：所有 raphael 镜像都必须做嵌套 GPT 映射
     return 0
 }
 
@@ -25,15 +19,23 @@ depends() {
 }
 
 install() {
-    # util-linux losetup 必须支持 --sector-size（busybox applet 不支持，会静默失败）；
-    # blkid 按 UUID 定位根，parted/partprobe 把内嵌 GPT 的 p2 扩到分区末尾。
-    inst_multiple losetup blkid parted partprobe
+    # 用绝对路径逐个安装，避开 PATH 里可能存在的 busybox applet 符号链接
+    # （busybox 的 losetup 不支持 --sector-size，会导致嵌套 GPT 映射失败）
+    local b p c
+    for b in losetup blkid partprobe parted; do
+        p=""
+        for c in /usr/bin/$b /usr/sbin/$b /bin/$b /sbin/$b; do
+            [ -x "$c" ] && { p="$c"; break; }
+        done
+        if [ -n "$p" ]; then
+            inst_simple "$p"
+        else
+            echo "raphael: 未找到 $b" >&2
+        fi
+    done
 
-    # 映射脚本里用到的其他工具（-o = 缺失不报错）
     inst_multiple -o udevadm modprobe partx sleep head basename cat strings
 
-    # 公共层映射脚本（已含 shebang，hook 里用 sh 调用，权限位不敏感）
     inst_simple /usr/lib/raphael-subpartition /usr/lib/raphael-subpartition
-
     inst_hook pre-udev 30 "$moddir/raphael-subpart.sh"
 }

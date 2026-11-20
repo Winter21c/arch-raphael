@@ -329,12 +329,20 @@ EOF
         die "initramfs 内缺少 99raphael 的 pre-udev hook"
     fi
 
-    local lo
-    lo=$(find "$tmp" -type f -name losetup 2>/dev/null | head -1 || true)
+    # initramfs 里可能同时存在 busybox 的 losetup applet 与 util-linux 的 losetup；
+    # 取体积最大的那个（真 losetup 约 200KB）
+    local lo size cand s
+    lo=""; size=0
+    for cand in $(find "$tmp" -type f -name losetup 2>/dev/null); do
+        s=$(stat -c%s "$cand" 2>/dev/null || echo 0)
+        [ "$s" -gt "$size" ] && { size=$s; lo=$cand; }
+    done
     [ -n "$lo" ] || die "initramfs 内缺少 losetup"
     if strings "$lo" 2>/dev/null | grep -q 'sector-size'; then
-        log "initramfs 内 losetup 支持 --sector-size（$(basename "$lo")）"
+        log "initramfs 内 losetup 支持 --sector-size（$lo, $size 字节）"
     else
+        warn "initramfs 内 $lo（$size 字节）未匹配 sector-size；候选："
+        find "$tmp" -name 'losetup' 2>/dev/null | sed 's/^/    /' | head -10
         die "initramfs 内 losetup 不支持 --sector-size，嵌套 GPT 映射会失败"
     fi
     rm -rf "$tmp"
