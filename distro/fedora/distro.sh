@@ -310,14 +310,16 @@ EOF
     local tmp="$WORK_DIR/initrd-verify"
     rm -rf "$tmp"
     install -d "$tmp"
+    # dracut 可能用 zstd/xz/gzip 压缩，也可能完全不压缩（镜像里缺压缩工具时）
+    # 注意：解包依赖 cpio（已在 tools/host-prep.sh 与 Fedora 包列表中加入）
     local dec
-    for dec in "zstd -dc" "xz -dc" "gzip -dc"; do
+    for dec in "zstd -dc" "xz -dc" "gzip -dc" "cat"; do
+        rm -rf "$tmp"
+        install -d "$tmp"
         if ( cd "$tmp" && $dec "$MNT/boot/initrd.img-$kver" 2>/dev/null | cpio -idm --quiet 2>/dev/null ) \
            && [ -e "$tmp/usr/lib/raphael-subpartition" ]; then
             break
         fi
-        rm -rf "$tmp"
-        install -d "$tmp"
     done
 
     [ -e "$tmp/usr/lib/raphael-subpartition" ] || die "initramfs 内缺少 /usr/lib/raphael-subpartition"

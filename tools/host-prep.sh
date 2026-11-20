@@ -55,7 +55,7 @@ case "$FAMILY" in
     debian)
         BASE_PKGS=(parted dosfstools btrfs-progs util-linux mount curl xz-utils zstd
                    binutils ca-certificates systemd kmod gdisk e2fsprogs file
-                   python3-yaml)
+                   python3-yaml cpio)
         ZIP_PKGS=(7zip p7zip-full)
         CROSS_PKGS=(qemu-user-static binfmt-support)
         UPDATE_CMD="apt-get update"
@@ -64,7 +64,7 @@ case "$FAMILY" in
     fedora)
         BASE_PKGS=(parted dosfstools btrfs-progs util-linux mount curl xz zstd
                    binutils ca-certificates systemd kmod gdisk e2fsprogs file
-                   python3-pyyaml)
+                   python3-pyyaml cpio)
         ZIP_PKGS=(7zip p7zip p7zip-plugins)
         CROSS_PKGS=(qemu-user-static)
         UPDATE_CMD=""
@@ -73,7 +73,7 @@ case "$FAMILY" in
     arch)
         BASE_PKGS=(parted dosfstools btrfs-progs util-linux mount curl xz zstd
                    binutils ca-certificates systemd kmod gptfdisk e2fsprogs file
-                   python-yaml)
+                   python-yaml cpio)
         ZIP_PKGS=(7zip)
         CROSS_PKGS=(qemu-user-static qemu-user-static-binfmt)
         UPDATE_CMD=""
@@ -102,6 +102,7 @@ REQUIRED_CMDS=(
     zstd                   # 解包 .deb 内的 zst
     ar                     # 拆 .deb
     tar
+    cpio                   # 解包 dracut/mkinitcpio 生成的 initramfs
     udevadm
     blkid
     sha256sum

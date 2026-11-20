@@ -40,3 +40,8 @@ fontconfig freetype google-noto-sans-cjk-fonts google-noto-emoji-fonts dejavu-sa
 polkit accountsservice
 xdg-desktop-portal xdg-desktop-portal-gtk
 sudo zram-generator iio-sensor-proxy rtkit upower
+
+# initramfs 解包 / 压缩工具（dracut 生成与自检都需要）
+cpio
+zstd
+xz
