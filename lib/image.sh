@@ -4,7 +4,10 @@
 
 img_create() {
     step "创建 GPT 镜像 (大小 $IMAGE_SIZE, boot $BOOT_SIZE, 扇区 $SECTOR_SIZE)"
-    losetup -D 2>/dev/null || true
+    # 只清理与本镜像相关的旧 loop 设备（不要 losetup -D，会误卸宿主机其它 loop 挂载）
+    local old old_list
+    old_list=$(losetup -j "$IMAGE_PATH" -O NAME -n 2>/dev/null || true)
+    for old in $old_list; do losetup -d "$old" 2>/dev/null || true; done
     rm -f "$IMAGE_PATH"
     truncate -s "$IMAGE_SIZE" "$IMAGE_PATH"
 

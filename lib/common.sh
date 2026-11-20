@@ -40,11 +40,12 @@ in_chroot()   { chroot "$MNT" "$@"; }
 chroot_sh()   { chroot "$MNT" /bin/sh -c "$1"; }
 
 mount_virtual() {
+    # 新建的 btrfs 子卷是空的：先建挂载点，否则 mount 会因路径不存在而失败
+    mkdir -p "$MNT/proc" "$MNT/sys" "$MNT/dev/pts" "$MNT/etc" "$MNT/tmp" "$MNT/var/tmp"
     mountpoint -q "$MNT/proc"    || mount -t proc proc "$MNT/proc"
     mountpoint -q "$MNT/sys"     || mount --rbind /sys "$MNT/sys"
     mountpoint -q "$MNT/dev"     || mount --rbind /dev "$MNT/dev"
     mountpoint -q "$MNT/dev/pts" || mount --rbind /dev/pts "$MNT/dev/pts"
-    mkdir -p "$MNT/etc"
     [ -f "$MNT/etc/resolv.conf" ] || cp -L /etc/resolv.conf "$MNT/etc/resolv.conf" 2>/dev/null || true
 }
 
@@ -60,10 +61,16 @@ cleanup_all() {
     set +e
     umount_virtual
     local d
-    for d in boot home ""; do
-        mountpoint -q "$MNT/$d" && umount -R "$MNT/$d" 2>/dev/null
+    for d in boot home; do
+        mountpoint -q "$MNT/$d" && umount -Rl "$MNT/$d" 2>/dev/null
     done
-    [ -n "$LOOP" ] && losetup -d "$LOOP" 2>/dev/null
+    mountpoint -q "$MNT" && umount -Rl "$MNT" 2>/dev/null
+    # 兜底：按镜像路径找到 loop 并 detach（LOOP 变量可能已丢失）
+    if [ -n "${IMAGE_PATH:-}" ]; then
+        for d in $(losetup -j "$IMAGE_PATH" -O NAME -n 2>/dev/null); do
+            losetup -d "$d" 2>/dev/null
+        done
+    fi
     LOOP=""
     return 0
 }

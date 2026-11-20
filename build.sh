@@ -61,8 +61,14 @@ distro_config "$DISTRO" || die "发行版配置错误"
 NEED_CONTAINER=0
 ARCH_MISMATCH=0
 if [ "$(uname -m)" != "aarch64" ]; then
-    NEED_CONTAINER=1
     ARCH_MISMATCH=1
+    # x86_64 主机只要注册了 qemu-aarch64 binfmt，就可以直接 chroot 进 arm64 根文件系统，
+    # 宿主机上的 parted/mkfs/dracut 等工具与架构无关，因此无需容器。
+    if [ -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ]; then
+        step "x86_64 主机 + qemu-aarch64 binfmt → 原生 chroot 构建（不进入容器）"
+    else
+        NEED_CONTAINER=1
+    fi
 fi
 if [ "$DISTRO" = "fedora" ] && ! have dnf5; then
     NEED_CONTAINER=1
@@ -70,8 +76,8 @@ fi
 
 if [ "$INNER" != "1" ] && [ "$NEED_CONTAINER" = "1" ]; then
     have docker || die "需要 docker 才能构建（主机 $(uname -m)，目标 $DISTRO；也可改用 arm64 原生主机）"
-    if [ "$ARCH_MISMATCH" = "1" ] && [ ! -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ]; then
-        die "缺少 qemu-aarch64 binfmt 注册。请安装 qemu-user-static 并注册 binfmt（或在该 arm64 设备/CI runner 上构建）"
+    if [ "$ARCH_MISMATCH" = "1" ]; then
+        die "缺少 qemu-aarch64 binfmt 注册，且需要容器化构建。请安装 qemu-user-static 并注册 binfmt"
     fi
     step "在容器内构建: $CONTAINER_IMAGE ($DISTRO, 阶段 $STAGE)"
     docker_env=()

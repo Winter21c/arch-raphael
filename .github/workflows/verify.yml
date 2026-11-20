@@ -1,0 +1,41 @@
+name: 静态自检
+
+# 源码仓库只做快速自检；镜像构建在专用的构建仓库（arch-raphael-build）里跑。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: 语法 / 结构 / 包列表 / workflow
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装校验依赖
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-yaml shellcheck binutils
+
+      - name: 运行仓库自检
+        run: bash tools/verify.sh
+
+      - name: shellcheck（warning 级）
+        run: |
+          set -o pipefail
+          mapfile -t files < <(git ls-files '*.sh' 'distro/*/mkinitcpio/*' 'distro/fedora/dracut/*/*.sh' 'overlay/initramfs/*')
+          shellcheck -S warning -e SC1090,SC1091,SC2034,SC2086,SC2155 "${files[@]}" || true
+
+      - name: 配置与阶段冒烟测试
+        run: |
+          set -euo pipefail
+          for d in arch fedora; do
+            bash -c "source config/device.conf; source config/distro.conf; distro_config $d; test -n \"\$IMAGE_SIZE\"; echo \"$d: \$IMAGE_SIZE\""
+          done
+          bash -n build.sh
+          ./build.sh --help >/dev/null

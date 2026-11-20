@@ -1,5 +1,9 @@
 # arch-raphael — Redmi K20 Pro 的 Arch Linux ARM / Fedora 镜像
 
+> **两个仓库**：
+> - [`arch-raphael`](https://github.com/Winter21c/arch-raphael) —— 本仓库，**源码**（构建脚本、发行版层、配置、文档），自带静态自检 workflow；
+> - [`arch-raphael-build`](https://github.com/Winter21c/arch-raphael-build) —— **专用构建仓库**：从源码仓库拉取代码，在 `ubuntu-24.04-arm` 上构建 Arch/Fedora 镜像并把产物发布到自己的 Releases。
+
 面向 **小米 Redmi K20 Pro（xiaomi-raphael，骁龙 855 / sm8150）** 的 Linux 镜像构建仓库。
 一次构建产出一个 `rootfs.img`，整体刷入 `userdata` 分区即可启动，无需改动 Android 的其他分区。
 
@@ -44,7 +48,9 @@
 | Arch Linux ARM 发行版层（bootstrap / 包 / mkinitcpio / locale） | `distro/arch/` | ✅ |
 | Fedora 44 发行版层（dnf --installroot / 包 / dracut / quickshell 与虚拟键盘源码构建） | `distro/fedora/` | ✅ |
 | 基带 / 传感器守护进程（`rmtfs`、`pd-mapper`、`hexagonrpcd`） | — | ⚠️ **可选组件，未默认集成**（见[已知限制](#已知限制)） |
-| CI / 本地构建入口 | `build.sh`、`Makefile`、`tools/`、`.github/workflows/build.yml` | ✅ |
+| 本地构建入口 | `build.sh`、`Makefile`、`tools/` | ✅ |
+| CI 静态自检 | `.github/workflows/verify.yml`（源码仓库） | ✅ |
+| CI 镜像构建 | `arch-raphael-build` 仓库的 `build.yml` | ✅ |
 
 > `lib/desktop.sh` 会在镜像里检查 `dms` 与 `squeekboard`：缺少 squeekboard 时只打印警告，
 > 也就是说**虚拟键盘能否用取决于发行版层有没有把它装进去**。
@@ -216,9 +222,10 @@ sudo ./build.sh arch all 2>&1 | tee build-arch.log   # 建议留日志
 
 ## GitHub Actions 构建
 
-仓库自带 [`.github/workflows/build.yml`](.github/workflows/build.yml)：
+镜像构建在**专用构建仓库** [`arch-raphael-build`](https://github.com/Winter21c/arch-raphael-build)：
+它的 workflow 会先 `checkout` 本源码仓库，再在 arm64 runner 上构建，产物发布到构建仓库的 Releases。
 
-1. 打开 **Actions → 构建系统镜像 → Run workflow**；
+1. 打开 **arch-raphael-build → Actions → 构建系统镜像 → Run workflow**；
 2. 输入参数：
 
    | 输入 | 取值 | 说明 |
@@ -288,7 +295,7 @@ sudo ./build.sh arch all 2>&1 | tee build-arch.log   # 建议留日志
 ├── docs/
 │   ├── INSTALL.md               # 刷机与首次启动排障
 │   └── BUILD.md                 # 构建原理
-└── .github/workflows/build.yml  # CI
+└── .github/workflows/verify.yml # 源码仓库：静态自检（镜像构建在 arch-raphael-build）
 ```
 
 更细的构建原理（为什么要 4096 扇区、initramfs 怎么映射、btrfs 子卷与横屏怎么落地）见 [docs/BUILD.md](docs/BUILD.md)。
