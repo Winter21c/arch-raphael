@@ -82,7 +82,7 @@ if [ "$INNER" != "1" ] && [ "$NEED_CONTAINER" = "1" ]; then
     step "在容器内构建: $CONTAINER_IMAGE ($DISTRO, 阶段 $STAGE)"
     docker_env=()
     for v in KERNEL_VERSION IMAGE_SIZE BOOT_SIZE SECTOR_SIZE COMPRESS_IMAGE \
-             USER_NAME USER_PASS ROOT_PASS COMPOSITOR SCREEN_ROTATION \
+             USER_NAME USER_PASS ROOT_PASS HOSTNAME_DEFAULT COMPOSITOR SCREEN_ROTATION \
              INSTALL_IME DUX_SHELL_VERSION DUX_GREETER_VERSION KERNEL_DEB_REPO; do
         eval "val=\${$v:-}"
         [ -n "$val" ] && docker_env+=(-e "$v=$val")
