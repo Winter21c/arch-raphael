@@ -45,6 +45,11 @@ build() {
         return 1
     fi
 
+    # 可选的 USB ACM 调试控制台（BOOT_SERIAL_CONSOLE=1 时由 distro_initramfs 安装）
+    if [[ -f /usr/lib/raphael-usb-console ]]; then
+        add_file /usr/lib/raphael-usb-console /usr/lib/raphael-usb-console 0755
+    fi
+
     # 运行时入口：/etc/initcpio/hooks/raphael -> /hooks/raphael（含 run_hook）
     add_runscript
 }

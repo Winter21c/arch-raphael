@@ -272,6 +272,13 @@ distro_initramfs() {
     install -Dm755 "$src" "$MNT/usr/lib/raphael-subpartition"
     install -Dm755 "$ARCH_DIR/mkinitcpio/raphael-hook"   "$MNT/etc/initcpio/install/raphael"
     install -Dm755 "$ARCH_DIR/mkinitcpio/raphael-script" "$MNT/etc/initcpio/hooks/raphael"
+
+    # 调试串口控制台（BOOT_SERIAL_CONSOLE=1）：无屏幕也能看到 initramfs 日志
+    if [ "${BOOT_SERIAL_CONSOLE:-0}" = "1" ]; then
+        install -Dm755 "$ARCH_REPO_DIR/overlay/initramfs/raphael-usb-console" \
+            "$MNT/usr/lib/raphael-usb-console"
+        log "调试串口控制台已加入 initramfs（console=ttyGS0）"
+    fi
     log "已安装 mkinitcpio hook: install/raphael + hooks/raphael"
 
     # ---- 2. /etc/mkinitcpio.conf ----------------------------------------

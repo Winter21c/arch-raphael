@@ -1,0 +1,39 @@
+#!/bin/sh
+# 建立 USB ACM 串口 gadget（调试用）：不依赖屏幕即可看到内核/initramfs 日志
+# 需要内核内建 CONFIG_USB_CONFIGFS_ACM=y（本内核已满足）
+
+msg() { echo "raphael-usb: $*" > /dev/kmsg 2>/dev/null || echo "raphael-usb: $*"; }
+
+mountpoint -q /sys/kernel/config || mount -t configfs none /sys/kernel/config 2>/dev/null || { msg "configfs mount failed"; exit 0; }
+G=/sys/kernel/config/usb_gadget/raphael
+[ -d "$G" ] || mkdir -p "$G" || { msg "gadget dir failed"; exit 0; }
+
+echo 0x1d6b > "$G/idVendor"
+echo 0x0104 > "$G/idProduct"
+echo 0x0100 > "$G/bcdDevice"
+echo 0x0200 > "$G/bcdUSB"
+
+mkdir -p "$G/strings/0x409"
+echo "raphael" > "$G/strings/0x409/manufacturer"
+echo "raphael console" > "$G/strings/0x409/product"
+cat /etc/machine-id > "$G/strings/0x409/serialnumber" 2>/dev/null || echo "raphael" > "$G/strings/0x409/serialnumber"
+
+mkdir -p "$G/configs/c.1/strings/0x409"
+echo "ACM console" > "$G/configs/c.1/strings/0x409/configuration"
+mkdir -p "$G/functions/acm.usb0"
+[ -e "$G/configs/c.1/acm.usb0" ] || ln -s "$G/functions/acm.usb0" "$G/configs/c.1/"
+
+# UDC 可能还没 probe 完，重试几秒
+i=0
+while [ "$i" -lt 20 ]; do
+    UDC=$(ls /sys/class/udc 2>/dev/null | head -1)
+    if [ -n "$UDC" ]; then
+        if echo "$UDC" > "$G/UDC" 2>/dev/null; then
+            msg "acm console ready on $UDC"
+            exit 0
+        fi
+    fi
+    i=$((i+1)); sleep 0.5
+done
+msg "no UDC available, gadget not bound"
+exit 0

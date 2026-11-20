@@ -17,6 +17,12 @@
 run_hook() {
     local rc
 
+    # 先建立 USB 串口控制台（若镜像里带了），后面日志/救援 shell 就不依赖屏幕
+    if [ -f /usr/lib/raphael-usb-console ]; then
+        msg "raphael: starting USB ACM debug console"
+        sh /usr/lib/raphael-usb-console 2>/dev/null || true
+    fi
+
     if [ ! -f /usr/lib/raphael-subpartition ]; then
         msg "raphael: /usr/lib/raphael-subpartition 缺失，跳过嵌套 GPT 映射"
         return 0

@@ -98,7 +98,11 @@ img_cmdline() {
     else
         extra="quiet loglevel=3 splash"
     fi
-    echo "root=UUID=$ROOT_UUID rw rootflags=subvol=@ $extra console=tty0 fbcon=rotate:$FBCON_ROTATE"
+    local consoles="console=tty0"
+    if [ "${BOOT_SERIAL_CONSOLE:-0}" = "1" ]; then
+        consoles="console=tty0 console=ttyGS0"
+    fi
+    echo "root=UUID=$ROOT_UUID rw rootflags=subvol=@ $extra $consoles fbcon=rotate:$FBCON_ROTATE"
 }
 #!/usr/bin/env bash
 # 把已存在的镜像重新挂载（支持分阶段构建）
