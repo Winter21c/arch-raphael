@@ -49,11 +49,11 @@ BUILD_ROOT=$MNT/tmp/keyboard-build
 # 系统侧 meson 调 cargo，另需 pkg-config 能找到 gtk+-3.0 / wayland-client / xkbcommon
 SQ_BUILD_DEPS="meson ninja-build gcc gcc-c++ rust cargo pkgconf-pkg-config python3 python3-ruamel-yaml
     glib2-devel gtk3-devel libxkbcommon-devel wayland-devel wayland-protocols-devel
-    systemd-devel libbsd-devel gtk-layer-shell-devel"
+    systemd-devel libbsd-devel gtk-layer-shell-devel gnome-desktop3-devel"
 
 # wvkbd：PKGS = wayland-client xkbcommon pangocairo（见上游 Makefile）
 WVKBD_BUILD_DEPS="gcc make pkgconf-pkg-config wayland-devel wayland-protocols-devel
-    libxkbcommon-devel pango-devel cairo-devel"
+    libxkbcommon-devel pango-devel cairo-devel scdoc"
 
 # dnf5 的 --skip-unavailable 在个别版本上不存在：失败后退回普通 install
 _dnf_install_soft() {
