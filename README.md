@@ -81,9 +81,14 @@
 1. **解锁 BootLoader**
    小米官方解锁流程（Mi Unlock 工具 + 账号绑定，通常需要等待解锁期）。解锁会清空数据。
 
-2. **刷入支持 Linux 的 U-Boot（本项目不提供）**
-   本仓库只产出 `rootfs.img`，**不包含** U-Boot / bootloader。
-   U-Boot 镜像与刷写方式请参考：
+2. **引导方式（二选一）**
+
+   **推荐：本仓库产出的 `boot-<distro>-<kver>.img`（原厂 ABL 直接引导 Linux）**
+   - 内含原始 arm64 `Image` + initramfs + raphael DTB + cmdline；
+   - 不需要 U-Boot，直接 `fastboot flash boot boot-arch-7.3.img` 即可；
+   - `BOOT_VERBOSE=1`（默认）时内核日志会打到屏幕，便于排障。
+
+   备选：第三方 U-Boot（本仓库不提供，需另刷）
    - [GengWei1997/linux-xiaomi-raphael-uboot](https://github.com/GengWei1997/linux-xiaomi-raphael-uboot)（分区方案、一键安装、Wiki）
    - [Nura Wiki](https://wiki.nura.eco)（`fastboot flash userdata` 同一套方案来源）
 
@@ -97,7 +102,8 @@
    - 逻辑扇区 **4096 字节**（匹配 UFS，必须与 U-Boot 的读取方式一致）
    - Boot 分区起始 `2048s`（8MiB 对齐）
    - Root 固定 UUID `ee8d3593-59b1-480e-a3b6-4fefb17ee7d8`（内核 cmdline 依赖它）
-   - 启动链：U-Boot → `/boot/EFI/BOOT/BOOTAA64.EFI`（systemd-boot）→ `raphael.conf` 条目 → `/boot/vmlinuz` + `/boot/initrd.img`
+   - 启动链（boot.img 方式）：ABL → 内核 + initramfs（内嵌 DTB，cmdline 带 `root=UUID=… rootflags=subvol=@`）
+   - 启动链（U-Boot 方式）：U-Boot → `/boot/EFI/BOOT/BOOTAA64.EFI`（systemd-boot）→ `raphael.conf` → `/boot/vmlinuz` + `/boot/initrd.img`
 
 3. **fastboot / adb 环境**
    Android platform-tools（`fastboot`、`adb`），USB 数据线；Windows 需装 fastboot 驱动。
@@ -111,21 +117,30 @@
 完整的首次启动排障见 [docs/INSTALL.md](docs/INSTALL.md)，这里是最短路径：
 
 ```bash
-# 1. 下载并校验（Release 里的文件名形如 rootfs-arch-7.3.7z）
+# 1. 下载并校验（Release 里形如 rootfs-arch-7.3.7z 与 boot-arch-7.3.img）
 7z x rootfs-arch-7.3.7z                 # 得到 rootfs.img
 sha256sum -c rootfs-arch-7.3.7z.sha256  # 校验压缩包
 
 # 2. 设备进入 fastboot（关机后 音量下 + 电源）
 fastboot devices
 
-# 3. 整块写入 userdata —— 这就是“刷机”
+# 3. 刷引导镜像（推荐：ABL 直接引导内核）
+fastboot flash boot boot-arch-7.3.img
+
+# 4. 整块写入 userdata —— 这就是“刷机”
 fastboot flash userdata rootfs.img
 fastboot reboot
 ```
 
+一条命令完成 3+4：
+
+```bash
+sudo tools/flash.sh --boot boot-arch-7.3.img rootfs.img
+```
+
 **首次启动**
 
-1. 开机出现 U-Boot → systemd-boot（1 秒超时）→ 内核；
+1. 开机由 ABL 直接加载 `boot.img` 里的内核（带 `loglevel=7`，屏幕上能看到启动日志）；若用 U-Boot 方案则是 U-Boot → systemd-boot（1 秒超时）→ 内核；
 2. 首次启动会比之后慢（`raphael-growfs.service` 扩容 + 服务初始化）；
 3. 自动进入 **dux-greeter 登录界面**（默认横屏），账号：
 
