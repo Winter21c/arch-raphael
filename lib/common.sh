@@ -75,8 +75,22 @@ cleanup_all() {
     return 0
 }
 
-svc_enable()  { chroot_sh "systemctl enable $* >/dev/null 2>&1 || true"; }
-svc_mask()    { chroot_sh "systemctl mask $* >/dev/null 2>&1 || true"; }
-svc_disable() { chroot_sh "systemctl disable $* >/dev/null 2>&1 || true"; }
+# systemctl 在 chroot 里不可靠（没有运行中的 systemd）；优先用宿主机 --root 离线操作
+_svc_op() {
+    local op="$1"; shift
+    [ -d "$MNT/etc/systemd" ] || { warn "缺少 $MNT/etc/systemd，跳过 $op $*"; return 0; }
+    if have systemctl && systemctl --root="$MNT" "$op" "$@" >/dev/null 2>&1; then
+        return 0
+    fi
+    if chroot_sh "systemctl $op $*" >/dev/null 2>&1; then
+        return 0
+    fi
+    warn "systemctl $op $* 失败（镜像内可能未生效）"
+    return 0
+}
+
+svc_enable()  { _svc_op enable "$@"; }
+svc_mask()    { _svc_op mask "$@"; }
+svc_disable() { _svc_op disable "$@"; }
 
 copy_tree() { local src="$1" dst="$2"; mkdir -p "$dst"; tar -C "$src" -cf - . | tar -C "$dst" -xf -; }

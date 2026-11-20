@@ -48,7 +48,12 @@ verify_image() {
              /etc/skel/.config/niri/config.kdl /etc/pam.d/dankshell; do
         v_file "$f"
     done
-    [ -x "$MNT/usr/bin/qs" ] && v_ok "/usr/bin/qs（quickshell 运行时）" || v_bad "缺少 /usr/bin/qs，dms run 无法启动"
+    # /usr/bin/qs 是指向 /usr/bin/quickshell 的绝对符号链接，宿主机上 -x 会解析到宿主路径
+    if chroot_sh "test -x /usr/bin/qs" >/dev/null 2>&1; then
+        v_ok "/usr/bin/qs（quickshell 运行时）"
+    else
+        v_bad "缺少可用的 /usr/bin/qs，dms run 无法启动"
+    fi
     if [ -x "$MNT/usr/bin/squeekboard" ]; then v_ok "虚拟键盘 squeekboard"; else v_warn "未找到 squeekboard（虚拟键盘不可用）"; fi
     grep -q "transform" "$MNT/etc/skel/.config/niri/config.kdl" && v_ok "默认横屏配置存在" || v_bad "缺少横屏配置"
     ls "$MNT"/etc/systemd/system/*.wants/greetd.service >/dev/null 2>&1 \
@@ -59,18 +64,24 @@ verify_image() {
     if [ -f "$initrd" ]; then
         local tmp="$WORK_DIR/initrd-check"
         rm -rf "$tmp"; mkdir -p "$tmp"
-        if ( cd "$tmp" && zstd -dc "$initrd" 2>/dev/null || xz -dc "$initrd" 2>/dev/null || gzip -dc "$initrd" 2>/dev/null ) | cpio -idm --quiet 2>/dev/null; then
-            [ -e "$tmp/raphael-subpartition" ] || [ -e "$tmp/scripts/local-top/raphael-subpartition" ] || [ -e "$tmp/usr/lib/raphael-subpartition" ] \
-                && v_ok "initramfs 含嵌套 GPT 映射脚本" || v_bad "initramfs 缺少 raphael-subpartition"
+        # 之前 cpio 在父 shell 的 cwd 里解包（cd 只在管道左侧子 shell 生效），现已修好
+        local list="$WORK_DIR/initrd.list"
+        if ( cd "$tmp" && { zstd -dc "$initrd" 2>/dev/null || xz -dc "$initrd" 2>/dev/null || gzip -dc "$initrd" 2>/dev/null; } | cpio -t --quiet 2>/dev/null ) > "$list" && [ -s "$list" ]; then
+            if grep -qE "raphael-subpartition$" "$list"; then
+                v_ok "initramfs 含嵌套 GPT 映射脚本（$(grep -E "raphael-subpartition$" "$list" | head -1)）"
+            else
+                v_bad "initramfs 缺少 raphael-subpartition"
+            fi
+            ( cd "$tmp" && { zstd -dc "$initrd" 2>/dev/null || xz -dc "$initrd" 2>/dev/null || gzip -dc "$initrd" 2>/dev/null; } | cpio -idm --quiet 2>/dev/null ) || true
             local lo
-            lo=$(find "$tmp" -name losetup -type f | head -1)
+            lo=$(find "$tmp" -name losetup -type f 2>/dev/null | head -1)
             if [ -n "$lo" ] && strings "$lo" 2>/dev/null | grep -q "sector-size"; then
                 v_ok "initramfs 内含支持 --sector-size 的 util-linux losetup"
             else
                 v_bad "initramfs 内 losetup 缺失或不支持 --sector-size"
             fi
         else
-            v_warn "无法解包 initramfs（跳过内容检查）"
+            v_bad "无法列出 initramfs 内容（解压失败）"
         fi
         local isz bsz
         isz=$(stat -c%s "$initrd")
