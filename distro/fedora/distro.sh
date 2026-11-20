@@ -338,12 +338,13 @@ EOF
         [ "$s" -gt "$size" ] && { size=$s; lo=$cand; }
     done
     [ -n "$lo" ] || die "initramfs 内缺少 losetup"
-    if strings "$lo" 2>/dev/null | grep -q 'sector-size'; then
-        log "initramfs 内 losetup 支持 --sector-size（$lo, $size 字节）"
+    # 以镜像内 losetup 的实际能力为准（容器的 strings 可能缺失/行为不同，字符串判断易误报）
+    if chroot_sh "losetup --help 2>&1 | grep -q -- '--sector-size'"; then
+        log "losetup 支持 --sector-size（initramfs 内 $lo, $size 字节）"
     else
-        warn "initramfs 内 $lo（$size 字节）未匹配 sector-size；候选："
+        warn "镜像内 losetup 不支持 --sector-size；候选："
         find "$tmp" -name 'losetup' 2>/dev/null | sed 's/^/    /' | head -10
-        die "initramfs 内 losetup 不支持 --sector-size，嵌套 GPT 映射会失败"
+        die "losetup 不支持 --sector-size，嵌套 GPT 映射会失败（需要 util-linux-core）"
     fi
     rm -rf "$tmp"
 
