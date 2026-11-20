@@ -6,13 +6,36 @@
   mkbootimg.py --kernel vmlinuz --ramdisk initrd.img --dtb raphael.dtb \
                --cmdline "..." --output boot.img [--page-size 4096] [--name raphael]
 """
-import argparse, hashlib, os, struct, sys
+import argparse, gzip, hashlib, os, struct, sys
 
 PAGE = 4096
 
 def pad(data, page=PAGE):
     n = len(data) % page
     return data if n == 0 else data + b"\x00" * (page - n)
+
+def unwrap_kernel(data):
+    """把 arm64 EFI zboot / gzip 内核还原成 ABL 能引导的原始 Image。
+
+    Debian/Ubuntu 的 /boot/vmlinuz-* 在 arm64 上是 PE/COFF EFI zboot 容器
+    （开头 "MZ" + "zimg"，内嵌 gzip 压缩的 Image）；Android boot image 里的
+    kernel 必须是原始 Image（偏移 56 处为 0x644d5241 "ARMd"）。
+    """
+    if data[:2] == b"MZ" and data[4:8] == b"zimg":
+        off = struct.unpack_from("<I", data, 8)[0]
+        size = struct.unpack_from("<I", data, 12)[0]
+        comp = data[0x18:0x1c].decode("ascii", "replace").strip("\x00")
+        payload = data[off:off + size]
+        if comp.startswith("gzip"):
+            payload = gzip.decompress(payload)
+        elif comp.startswith("zstd"):
+            import subprocess
+            payload = subprocess.run(["zstd", "-dc"], input=payload, capture_output=True, check=True).stdout
+        data = payload
+    elif data[:2] == b"\x1f\x8b":
+        data = gzip.decompress(data)
+    return data
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -30,6 +53,12 @@ def main():
     a = ap.parse_args()
 
     kernel = open(a.kernel, "rb").read()
+    raw = unwrap_kernel(kernel)
+    if len(raw) != len(kernel) or raw[:2] != b"MZ":
+        kernel = raw
+        magic = kernel[56:60]
+        if magic != b"ARMd":
+            sys.exit("kernel 不是 arm64 Image（偏移 56 期望 ARMd，实际 %r）" % magic)
     ramdisk = open(a.ramdisk, "rb").read()
     dtb = open(a.dtb, "rb").read() if a.dtb else b""
     page = a.page_size

@@ -67,6 +67,12 @@ boot_build_android() {
         --name raphael \
         --output "$WORK_DIR/boot.img" || die "mkbootimg 失败"
 
+    local size_mb
+    size_mb=$(( $(stat -c%s "$WORK_DIR/boot.img") / 1048576 ))
+    if [ "$size_mb" -gt 63 ]; then
+        warn "boot.img 为 ${size_mb}MB，可能超出 boot 分区（raphael 约 64MB）"
+    fi
+
     install -Dm644 "$WORK_DIR/boot.img" "$REPO_DIR/boot-$DISTRO_ID-$KERNEL_VERSION.img"
-    log "boot image: $REPO_DIR/boot-$DISTRO_ID-$KERNEL_VERSION.img ($(du -h "$WORK_DIR/boot.img" | cut -f1))"
+    log "boot image: $REPO_DIR/boot-$DISTRO_ID-$KERNEL_VERSION.img（${size_mb}MB，内核已解包为原始 Image）"
 }
