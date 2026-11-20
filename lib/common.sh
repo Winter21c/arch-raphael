@@ -51,8 +51,15 @@ mount_virtual() {
 
 umount_virtual() {
     local d
-    for d in dev/pts dev sys proc; do
-        mountpoint -q "$MNT/$d" && umount -l "$MNT/$d" 2>/dev/null
+    # rbind /dev /sys 会产生许多子挂载（dev/pts、dev/shm、dev/mqueue…），
+    # 必须递归卸载；直接 -l 只摘掉顶层，子挂载会让后续 umount 报 EBUSY。
+    for d in dev sys; do
+        mountpoint -q "$MNT/$d" || continue
+        umount -R "$MNT/$d" 2>/dev/null || umount -Rl "$MNT/$d" 2>/dev/null || true
+    done
+    for d in proc; do
+        mountpoint -q "$MNT/$d" || continue
+        umount "$MNT/$d" 2>/dev/null || umount -l "$MNT/$d" 2>/dev/null || true
     done
     return 0
 }

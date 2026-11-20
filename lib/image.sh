@@ -42,11 +42,23 @@ img_create() {
 img_umount() {
     step "卸载镜像"
     umount_virtual
-    local d
-    for d in boot home ""; do
-        mountpoint -q "$MNT/$d" && umount -R "$MNT/$d" 2>/dev/null
+    local target
+    for target in "$MNT/boot" "$MNT/home" "$MNT"; do
+        [ -e "$target" ] || continue
+        mountpoint -q "$target" || continue
+        if ! umount -R "$target" 2>/dev/null; then
+            warn "卸载 $target 失败，诊断如下："
+            mount | grep -F "$target" | sed 's/^/    /' | head -8
+            have fuser && fuser -vm "$target" 2>&1 | head -8
+            warn "尝试 lazy 卸载 $target"
+            umount -Rl "$target" 2>/dev/null || true
+        fi
     done
     sync; sleep 1
+    if mountpoint -q "$MNT"; then
+        warn "镜像根仍被挂载，跳过 btrfs 校验与 loop 清理（镜像可能不完整）"
+        return 0
+    fi
     if btrfs check --readonly "$LOOP"p2 >/dev/null 2>&1; then
         log "btrfs 只读校验通过"
     else
