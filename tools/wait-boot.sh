@@ -115,9 +115,15 @@ LAST_REPORT=-10
 PHASE_SEEN=''
 RC=1
 
+ensure_host_ip
+
 while :; do
     NOW=$(date +%s)
     ELAPSED=$((NOW - START))
+    # 每 20s 再试一次：USB 网卡可能在开机过程中才枚举出来
+    if [ $((ELAPSED % 20)) -lt "$INTERVAL" ]; then
+        ensure_host_ip
+    fi
     RC=0
     probe || RC=$?
     [ "$RC" -eq 0 ] && break
