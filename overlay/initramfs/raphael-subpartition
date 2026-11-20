@@ -83,6 +83,13 @@ command -v udevadm >/dev/null 2>&1 && udevadm settle 2>/dev/null
 [ -n "$LOOPDEV" ] || { msg "no userdata subpartition mapped"; exit 0; }
 [ -e "${LOOPDEV}p2" ] || { msg "warning: ${LOOPDEV}p2 missing"; exit 0; }
 
+# 诊断：把找到的分区与 UUID 打到控制台，root 解析失败时能一眼看出原因
+msg "expected root UUID: ${ROOTUUID:-<none>}"
+for p in "${LOOPDEV}p1" "${LOOPDEV}p2"; do
+    [ -e "$p" ] || continue
+    msg "  $p  uuid=$("$BLKID" -s UUID -o value "$p" 2>/dev/null)  label=$("$BLKID" -s LABEL -o value "$p" 2>/dev/null)  type=$("$BLKID" -s TYPE -o value "$p" 2>/dev/null)"
+done
+
 # 3) 内嵌 GPT 的 p2 扩展到镜像末尾（镜像刷入 ~48G userdata 后只占 8-10G）
 if [ -n "$PARTED" ]; then
     if LC_ALL=C "$PARTED" -s "$LOOPDEV" print 2>/dev/null | grep -qi "free space"; then
