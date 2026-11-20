@@ -43,6 +43,17 @@ fi
 
 if [ -n "$BOOT" ]; then
     [ -f "$BOOT" ] || { echo "boot 镜像不存在: $BOOT" >&2; exit 1; }
+    # 预检：boot.img 必须能放进 boot 分区，避免白刷一次
+    psize_hex=$(fastboot getvar partition-size:boot 2>&1 | sed -n 's/.*partition-size:boot: *0x//p' | head -1)
+    if [ -n "$psize_hex" ]; then
+        psize=$((16#$psize_hex))
+        bsize=$(stat -c%s "$BOOT")
+        printf '   boot 分区 %s 字节，boot.img %s 字节\n' "$psize" "$bsize"
+        if [ "$bsize" -gt "$psize" ]; then
+            echo "boot.img 超过 boot 分区容量：请改用 U-Boot 方案，或精简 initramfs（dracut --omit）" >&2
+            exit 1
+        fi
+    fi
     echo "==> 刷写 $BOOT（$(du -h "$BOOT" | cut -f1)）到 boot 分区（内核+initramfs+DTB，ABL 直接引导）"
     fastboot flash boot "$BOOT"
 fi
