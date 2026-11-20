@@ -69,7 +69,13 @@ img_umount() {
 }
 
 img_cmdline() {
-    echo "root=UUID=$ROOT_UUID rw rootflags=subvol=@ quiet loglevel=3 splash console=tty0 fbcon=rotate:$FBCON_ROTATE"
+    local extra=""
+    if [ "${BOOT_VERBOSE:-0}" = "1" ]; then
+        extra="loglevel=7"
+    else
+        extra="quiet loglevel=3 splash"
+    fi
+    echo "root=UUID=$ROOT_UUID rw rootflags=subvol=@ $extra console=tty0 fbcon=rotate:$FBCON_ROTATE"
 }
 #!/usr/bin/env bash
 # 把已存在的镜像重新挂载（支持分阶段构建）

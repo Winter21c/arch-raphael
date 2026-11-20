@@ -51,3 +51,22 @@ EOS
     chmod 755 "$MNT/usr/local/bin/raphael-kernel-update"
     log "引导参数: $(img_cmdline)"
 }
+# 生成 Android boot image（ABL 直接引导 Linux，不依赖 U-Boot）
+boot_build_android() {
+    step "打包 Android boot image（内核 + initramfs + DTB）"
+    local dtb="$MNT/boot/dtbs/qcom/sm8150-xiaomi-raphael.dtb"
+    [ -f "$dtb" ] || die "缺少设备树: $dtb"
+    [ -f "$WORK_DIR/vmlinuz" ] || die "缺少内核: $WORK_DIR/vmlinuz"
+    [ -f "$WORK_DIR/initrd.img" ] || die "缺少 initramfs: $WORK_DIR/initrd.img"
+
+    python3 "$REPO_DIR/tools/mkbootimg.py" \
+        --kernel "$WORK_DIR/vmlinuz" \
+        --ramdisk "$WORK_DIR/initrd.img" \
+        --dtb "$dtb" \
+        --cmdline "$(img_cmdline)" \
+        --name raphael \
+        --output "$WORK_DIR/boot.img" || die "mkbootimg 失败"
+
+    install -Dm644 "$WORK_DIR/boot.img" "$REPO_DIR/boot-$DISTRO_ID-$KERNEL_VERSION.img"
+    log "boot image: $REPO_DIR/boot-$DISTRO_ID-$KERNEL_VERSION.img ($(du -h "$WORK_DIR/boot.img" | cut -f1))"
+}

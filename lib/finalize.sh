@@ -23,6 +23,15 @@ finalize_image() {
         ls -lh "$base.7z"
         _chown_artifacts "$base"
     fi
+
+    # boot image（ABL 直接引导用）与校验和
+    local bootimg="boot-$DISTRO_ID-$KERNEL_VERSION.img"
+    if [ -f "$REPO_DIR/$bootimg" ]; then
+        ( cd "$REPO_DIR" && sha256sum "$bootimg" | tee "$bootimg.sha256" )
+        [ -n "${SUDO_UID:-}" ] && chown "$SUDO_UID:${SUDO_GID:-$SUDO_UID}" "$REPO_DIR/$bootimg" "$REPO_DIR/$bootimg.sha256" 2>/dev/null
+        log "boot image: $bootimg"
+    fi
+    return 0
 }
 
 # 把产物属主交还给调用 sudo 的用户（SUDO_UID），便于 CI 的非 root 步骤继续处理

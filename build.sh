@@ -132,7 +132,7 @@ stage_desktop()   { distro_desktop; desktop_install; }
 stage_hardware()  { hardware_overlay; }
 stage_kernel()    { kernel_install; }
 stage_initramfs() { distro_initramfs; }
-stage_boot()      { boot_install; }
+stage_boot()      { boot_install; boot_build_android; }
 stage_verify()    { verify_image; }
 stage_finalize()  { finalize_image; }
 
