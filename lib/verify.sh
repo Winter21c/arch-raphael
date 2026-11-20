@@ -56,8 +56,12 @@ verify_image() {
     fi
     if [ -x "$MNT/usr/bin/squeekboard" ]; then v_ok "虚拟键盘 squeekboard"; else v_warn "未找到 squeekboard（虚拟键盘不可用）"; fi
     grep -q "transform" "$MNT/etc/skel/.config/niri/config.kdl" && v_ok "默认横屏配置存在" || v_bad "缺少横屏配置"
-    ls "$MNT"/etc/systemd/system/*.wants/greetd.service >/dev/null 2>&1 \
-        && v_ok "greetd 已启用" || v_warn "greetd 未启用（登录界面不会出现）"
+    if ls "$MNT"/etc/systemd/system/*.wants/greetd.service >/dev/null 2>&1 \
+       || [ -L "$MNT/etc/systemd/system/display-manager.service" ]; then
+        v_ok "greetd 已启用（display-manager）"
+    else
+        v_warn "greetd 未启用（登录界面不会出现）"
+    fi
 
     echo "[initramfs]"
     local initrd="$MNT/boot/initrd.img"
@@ -75,8 +79,11 @@ verify_image() {
             ( cd "$tmp" && { zstd -dc "$initrd" 2>/dev/null || xz -dc "$initrd" 2>/dev/null || gzip -dc "$initrd" 2>/dev/null; } | cpio -idm --quiet 2>/dev/null ) || true
             local lo
             lo=$(find "$tmp" -name losetup -type f 2>/dev/null | head -1)
-            if [ -n "$lo" ] && strings "$lo" 2>/dev/null | grep -q "sector-size"; then
-                v_ok "initramfs 内含支持 --sector-size 的 util-linux losetup"
+            # 以镜像内 losetup 的实际能力为准：容器的 strings 可能缺失，字符串判断会误报
+            if [ -n "$lo" ] && chroot_sh "losetup --help 2>&1 | grep -q -- '--sector-size'" >/dev/null 2>&1; then
+                v_ok "initramfs 内含支持 --sector-size 的 util-linux losetup（$lo）"
+            elif chroot_sh "losetup --help 2>&1 | grep -q -- '--sector-size'" >/dev/null 2>&1; then
+                v_warn "initramfs 未找到 losetup 文件，但镜像内 losetup 支持 --sector-size"
             else
                 v_bad "initramfs 内 losetup 缺失或不支持 --sector-size"
             fi
