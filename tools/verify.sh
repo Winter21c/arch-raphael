@@ -7,6 +7,7 @@
 #   2. 全部 shell 脚本 bash -n 语法
 #   3. distro/*/packages*.txt 包列表非空
 #   4. workflow YAML 语法（python3 + PyYAML）与关键字段
+#      源码仓库用 verify.yml；若存在 build.yml（构建仓库布局）则额外校验其关键字段
 #   5. config/*.conf 可 source 且变量齐全（含 arch / fedora 两个分支）
 #   6. build.sh 阶段名、--inner 与可执行位
 #   7. Makefile 目标齐全
@@ -69,7 +70,7 @@ REQUIRED_FILES=(
     README.md
     docs/BUILD.md
     docs/INSTALL.md
-    .github/workflows/build.yml
+    .github/workflows/verify.yml
 )
 for f in "${REQUIRED_FILES[@]}"; do
     if [ -e "$f" ]; then
