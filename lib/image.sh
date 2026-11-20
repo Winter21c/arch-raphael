@@ -8,8 +8,6 @@ img_ensure_part_nodes() {
     base=$(basename "$1")
     local n
     for n in 1 2 3; do
-        name="${base}p${n}"
-        if [ -e "$name" ]; then name="/dev/$name"; fi
         name="/dev/${base}p${n}"
         [ -e "$name" ] && continue
         i=0
