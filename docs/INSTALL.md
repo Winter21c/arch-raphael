@@ -307,3 +307,30 @@ fastboot reboot
 - [Nura Wiki](https://wiki.nura.eco)
 - [duxlabs-dev/dux-shell](https://github.com/duxlabs-dev/dux-shell) · [dux-greeter](https://github.com/duxlabs-dev/dux-greeter)
 - [niri](https://github.com/YaLTeR/niri) · [squeekboard](https://gitlab.gnome.org/World/Phosh/squeekboard)
+
+## 14. 两种引导方式（boot.img 与 U-Boot）
+
+镜像同时提供 **Android boot image**（`boot-<distro>-<kver>.img`），这是**推荐**的引导方式：
+
+```bash
+fastboot flash boot    boot-arch-7.3.img    # 内核 + initramfs + raphael DTB，原厂 ABL 直接引导
+fastboot flash userdata rootfs-arch-7.3.img # 系统镜像（内嵌 GPT + btrfs）
+fastboot reboot
+```
+
+- 优点：不依赖 U-Boot 的分区扫描逻辑，ABL 直接加载内核；`BOOT_VERBOSE=1` 时内核日志直接打到屏幕，便于排障。
+- boot.img 由 `tools/mkbootimg.py` 打包（header v2，page 4096），cmdline 与 ESP 里的引导条目一致。
+
+另一条路线是 **U-Boot + systemd-boot**：
+
+```bash
+fastboot flash boot    u-boot-sm8150-xiaomi-raphael-<日期>.img   # 第三方 U-Boot
+fastboot flash userdata rootfs-arch-7.3.img
+fastboot reboot
+```
+
+U-Boot 会 `bootefi bootmgr` 扫描 ESP（镜像内 p1）里的 `/EFI/BOOT/BOOTAA64.EFI`。若 U-Boot 没找到可启动项，
+屏幕会停在 U-Boot 启动菜单（可用音量键选择），此时也可以直接改用上面的 boot.img 方式。
+
+两种方式都只写 `boot` 与 `userdata` 两个分区，随时可以 `fastboot flash boot <原厂 boot.img>` 恢复 Android。
+
