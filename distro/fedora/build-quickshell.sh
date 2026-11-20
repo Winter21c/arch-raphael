@@ -181,7 +181,14 @@ main() {
     # ---- 5) 配置 / 编译 / 安装 -------------------------------------------
     # CRASH_HANDLER=OFF：上游默认依赖 cpptrace（F44 无此包）
     # v0.3.2 已移除 X11 后端，因此不需要 libxcb / X11 选项
-    local cmake_args="-DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_SKIP_INSTALL_RPATH=ON -DCRASH_HANDLER=OFF -DDISTRIBUTOR=Fedora"
+    # quickshell 只有在显式给出 INSTALL_QMLDIR 时才安装 QML 模块
+    local qmldir
+    qmldir=$(chroot_sh "qtpaths6 --query QT_INSTALL_QML 2>/dev/null || qmake6 -query QT_INSTALL_QML 2>/dev/null || true" 2>/dev/null | tail -1)
+    if [ -z "$qmldir" ]; then
+        if [ -d "$MNT/usr/lib64/qt6/qml" ]; then qmldir=/usr/lib64/qt6/qml; else qmldir=/usr/lib/qt6/qml; fi
+    fi
+    log "quickshell QML 安装目录: $qmldir"
+    local cmake_args="-DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_SKIP_INSTALL_RPATH=ON -DCRASH_HANDLER=OFF -DDISTRIBUTOR=Fedora -DINSTALL_QMLDIR=$qmldir"
     if ! chroot_sh "cd $srcdir && cmake -S . -B build -GNinja $cmake_args"; then
         warn "cmake 配置失败（Qt6 私有头 / devel 包缺失？见上方 cmake 输出）"
         [ "$dropped" = "1" ] && _restore_rpm
