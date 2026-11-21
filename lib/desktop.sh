@@ -87,15 +87,55 @@ binds {
 }
 EOF
 
+    # ---- 电源键守护进程（不依赖 niri 是否收到按键）----------------------
+    cat > "$MNT/usr/local/sbin/raphael-powerkey.sh" <<'EOS'
+#!/bin/sh
+# 监听从 pm8941_pwrkey 产生的 KEY_POWER(116) 按下事件
+set -u
+DEV=""
+for d in /dev/input/event*; do
+    n=$(cat "/sys/class/input/$(basename "$d")/device/name" 2>/dev/null || true)
+    case "$n" in *pwrkey*) DEV=$d; break;; esac
+done
+[ -n "$DEV" ] || { echo "no pwrkey device"; exit 1; }
+echo "watching $DEV"
+while :; do
+    ev=$(dd if="$DEV" bs=24 count=1 2>/dev/null | od -An -tu2 -j16 -N4 2>/dev/null | tr -s " ")
+    set -- $ev
+    if [ "${1:-0}" = "1" ] && [ "${2:-0}" = "116" ]; then
+        /usr/local/bin/raphael-screen-toggle
+    fi
+done
+EOS
+    chmod 755 "$MNT/usr/local/sbin/raphael-powerkey.sh"
+
+    cat > "$MNT/etc/systemd/system/raphael-powerkey.service" <<'EOS'
+[Unit]
+Description=Power key -> screen toggle (pm8941_pwrkey)
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/raphael-powerkey.sh
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+EOS
+
     # ---- 硬件按键辅助脚本（电源键熄屏/亮屏、音量键）--------------------
     install -Dm755 /dev/stdin "$MNT/usr/local/bin/raphael-screen-toggle" <<'EOS'
 #!/bin/sh
-# 电源键：熄屏 / 亮屏。优先用 niri IPC，失败则直接改背光。
+# 电源键：熄屏 / 亮屏。root 守护进程调用，需要自己找会话的 niri socket。
 set -u
-if command -v niri >/dev/null 2>&1 && niri msg version >/dev/null 2>&1; then
-    niri msg action power-off-monitors >/dev/null 2>&1 && exit 0
-fi
-# 兜底：切换背光 0 <-> 最大值
+for sock in /run/user/*/niri*.sock; do
+    [ -S "$sock" ] || continue
+    export NIRI_SOCKET="$sock"
+    export XDG_RUNTIME_DIR=$(dirname "$sock")
+    if niri msg action power-off-monitors >/dev/null 2>&1; then exit 0; fi
+done
+# 兜底：直接切背光 0 <-> 最大值
 for b in /sys/class/backlight/*; do
     [ -e "$b/brightness" ] || continue
     cur=$(cat "$b/brightness" 2>/dev/null || echo 0)
@@ -213,6 +253,6 @@ EOF
     fi
 
     # ---- 10. 登录管理器 --------------------------------------------------
-    svc_enable greetd.service
+    svc_enable greetd.service raphael-powerkey.service
     log "dux-shell + dux-greeter + squeekboard + 横屏配置完成"
 }
