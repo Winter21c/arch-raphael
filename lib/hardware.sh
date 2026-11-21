@@ -42,6 +42,49 @@ monitor.alsa.rules = [
 ]
 EOF
 
+    # ---- 音频路由（Q6 后端 DAI 使能）-----------------------------------
+    # 实测：Q6 routing 开关（*_RX Audio Mixer MultiMediaN）打开后，PCM 才能拿到
+    # backend DAI；否则 dmesg 报 "no backend DAIs enabled ... missing UCM profile"，
+    # aplay 直接 EINVAL。UCM 侧无论怎么放都对不上（见 docs/HARDWARE.md），
+    # 因此这里用 oneshot 服务在开机后把开关打开并读回校验。
+    cat > "$MNT/usr/local/sbin/raphael-audio-route.sh" <<'EOF'
+#!/bin/sh
+# 打开 Q6 路由开关并读回校验；幂等，可重复执行
+set -u
+CARD=${RAPHAEL_CARD:-0}
+ok=0; bad=0; missing=0
+for sw in "QUAT_MI2S_RX Audio Mixer MultiMedia1" \
+          "QUAT_MI2S_RX Audio Mixer MultiMedia2" \
+          "SLIMBUS_0_RX Audio Mixer MultiMedia1"; do
+    if ! amixer -c "$CARD" sget "$sw" >/dev/null 2>&1; then
+        missing=$((missing+1)); echo "SKIP $sw (不存在)"; continue
+    fi
+    amixer -c "$CARD" sset "$sw" on >/dev/null 2>&1 || true
+    st=$(amixer -c "$CARD" sget "$sw" 2>/dev/null | grep -m1 -E '\[(on|off)\]' || true)
+    case "$st" in
+        *"[on]"*) ok=$((ok+1)); echo "OK   $sw" ;;
+        *)        bad=$((bad+1)); echo "FAIL $sw :: $st" ;;
+    esac
+done
+echo "raphael-audio-route: ok=$ok bad=$bad missing=$missing"
+[ "$bad" -eq 0 ]
+EOF
+    chmod 755 "$MNT/usr/local/sbin/raphael-audio-route.sh"
+
+    cat > "$MNT/etc/systemd/system/raphael-audio-route.service" <<'EOF'
+[Unit]
+Description=Enable Q6 audio routing mixers (backend DAI)
+After=sound.target local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/raphael-audio-route.sh
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
     # ---- ALSA UCM 兜底落位 ----------------------------------------------
     # 内核把声卡命名为 "Raphael"（来自 DTB model），而 alsa-ucm-conf 的官方包是按
     # "sm8150_raphael"/长名匹配的。这里把随内核 deb 附带的 UCM 复制到 alsa-lib
@@ -154,7 +197,7 @@ WantedBy=multi-user.target
 UNIT
 
     if chroot_sh "command -v dnsmasq >/dev/null 2>&1"; then
-        svc_enable dnsmasq.service usb-ncm.service raphael-touch-reset.service
+        svc_enable dnsmasq.service usb-ncm.service raphael-touch-reset.service raphael-audio-route.service
     else
         warn "未安装 dnsmasq，USB 网络共享不可用"
     fi
