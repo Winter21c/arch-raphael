@@ -85,16 +85,17 @@ ExecStart=/usr/local/sbin/raphael-audio-route.sh
 WantedBy=multi-user.target
 EOF
 
-    # ---- ALSA UCM 兜底落位 ----------------------------------------------
-    # 内核把声卡命名为 "Raphael"（来自 DTB model），而 alsa-ucm-conf 的官方包是按
-    # "sm8150_raphael"/长名匹配的。这里把随内核 deb 附带的 UCM 复制到 alsa-lib
-    # 可能查找的三条路径，尽量让路由能被加载（实测仍有 -2，见 docs/HARDWARE.md）。
+    # ---- ALSA UCM 落位（按驱动名 sm8150 匹配）---------------------------
+    # 实测：alsa-lib 的 ucm2 是按 ASoC 驱动名查找 UCM 的，不是按卡名。
+    # 卡名是 "sm8150raphael"/"Raphael" 时都会 ENOENT(-2)，只有
+    #   /usr/share/alsa/ucm2/conf.d/sm8150/sm8150.conf
+    # 能让 alsaucm -c sm8150 set _verb HiFi 成功；成功后 WirePlumber 才会
+    # 生成 Headphone(WCD9340) / Speaker(TFA9874) 两个 sink。
+    # 外层用 Syntax 4（HiFi.conf 本身是 UCM2 语法）。
     if [ -d "$MNT/usr/share/alsa/ucm2/Raphael" ]; then
-        install -d "$MNT/usr/share/alsa/ucm/Raphael" "$MNT/usr/share/alsa/ucm2/conf.d/Raphael"
-        cp -f "$MNT/usr/share/alsa/ucm2/Raphael/"*.conf "$MNT/usr/share/alsa/ucm/Raphael/" 2>/dev/null || true
-        cp -f "$MNT/usr/share/alsa/ucm2/Raphael/"*.conf "$MNT/usr/share/alsa/ucm2/conf.d/Raphael/" 2>/dev/null || true
-        # HiFi.conf 是 UCM2 语法，外层要用 Syntax 4 才能被 ucm2 加载器导入
-        cat > "$MNT/usr/share/alsa/ucm2/conf.d/Raphael/Raphael.conf" <<'EOF'
+        install -d "$MNT/usr/share/alsa/ucm2/conf.d/sm8150"
+        cp -f "$MNT/usr/share/alsa/ucm2/Raphael/HiFi.conf" "$MNT/usr/share/alsa/ucm2/conf.d/sm8150/" 2>/dev/null || true
+        cat > "$MNT/usr/share/alsa/ucm2/conf.d/sm8150/sm8150.conf" <<'EOF'
 Syntax 4
 
 SectionUseCase."HiFi" {
@@ -102,7 +103,7 @@ SectionUseCase."HiFi" {
 	Comment "HiFi quality Music"
 }
 EOF
-        log "ALSA UCM 已落位到 ucm/、ucm2/、ucm2/conf.d/ 三处（卡名 Raphael）"
+        log "ALSA UCM 已落位到 conf.d/sm8150（按驱动名匹配）"
     fi
 
     # ---- Venus VA-API 硬解（H.264/HEVC）----------------------------------
