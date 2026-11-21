@@ -90,8 +90,9 @@ EOF
     # ---- 电源键守护进程（不依赖 niri 是否收到按键）----------------------
     cat > "$MNT/usr/local/sbin/raphael-powerkey.sh" <<'EOS'
 #!/bin/sh
-# 监听从 pm8941_pwrkey 产生的 KEY_POWER(116) 按下事件
+# 监听 pm8941_pwrkey 的 KEY_POWER(116) 按下事件（value==1），忽略抬起/重复
 set -u
+EV=/run/raphael-pwrkey.ev
 DEV=""
 for d in /dev/input/event*; do
     n=$(cat "/sys/class/input/$(basename "$d")/device/name" 2>/dev/null || true)
@@ -100,9 +101,11 @@ done
 [ -n "$DEV" ] || { echo "no pwrkey device"; exit 1; }
 echo "watching $DEV"
 while :; do
-    ev=$(dd if="$DEV" bs=24 count=1 2>/dev/null | od -An -tu2 -j16 -N4 2>/dev/null | tr -s " ")
-    set -- $ev
-    if [ "${1:-0}" = "1" ] && [ "${2:-0}" = "116" ]; then
+    dd if="$DEV" bs=24 count=1 of="$EV" 2>/dev/null || { sleep 1; continue; }
+    type=$(od -An -tu2 -j16 -N2 "$EV" 2>/dev/null | tr -d " ")
+    code=$(od -An -tu2 -j18 -N2 "$EV" 2>/dev/null | tr -d " ")
+    val=$(od -An -tu4 -j20 -N4 "$EV" 2>/dev/null | tr -d " ")
+    if [ "$type" = "1" ] && [ "$code" = "116" ] && [ "$val" = "1" ]; then
         /usr/local/bin/raphael-screen-toggle
     fi
 done
@@ -127,21 +130,24 @@ EOS
     # ---- 硬件按键辅助脚本（电源键熄屏/亮屏、音量键）--------------------
     install -Dm755 /dev/stdin "$MNT/usr/local/bin/raphael-screen-toggle" <<'EOS'
 #!/bin/sh
-# 电源键：熄屏 / 亮屏。root 守护进程调用，需要自己找会话的 niri socket。
+# 电源键：背光开/关（状态机，任何情况下都能恢复）+ 同时尝试 niri 熄屏
 set -u
-for sock in /run/user/*/niri*.sock; do
-    [ -S "$sock" ] || continue
-    export NIRI_SOCKET="$sock"
-    export XDG_RUNTIME_DIR=$(dirname "$sock")
-    if niri msg action power-off-monitors >/dev/null 2>&1; then exit 0; fi
-done
-# 兜底：直接切背光 0 <-> 最大值
-for b in /sys/class/backlight/*; do
-    [ -e "$b/brightness" ] || continue
-    cur=$(cat "$b/brightness" 2>/dev/null || echo 0)
-    max=$(cat "$b/max_brightness" 2>/dev/null || echo 1)
-    if [ "$cur" -gt 0 ]; then echo 0 > "$b/brightness" 2>/dev/null; else echo "$max" > "$b/brightness" 2>/dev/null; fi
-done
+ST=/run/raphael-screen-state
+B=$(ls -d /sys/class/backlight/* 2>/dev/null | head -1)
+[ -n "$B" ] || { echo "no backlight"; exit 1; }
+cur=$(cat "$B/brightness" 2>/dev/null || echo 0)
+max=$(cat "$B/max_brightness" 2>/dev/null || echo 1)
+state=$(cat "$ST" 2>/dev/null || echo on)
+if [ "$state" = "on" ]; then
+    echo "$cur" > /run/raphael-screen-saved 2>/dev/null || true
+    echo 0 > "$B/brightness" 2>/dev/null || true
+    echo off > "$ST"
+else
+    saved=$(cat /run/raphael-screen-saved 2>/dev/null || echo "$max")
+    [ "$saved" -gt 0 ] 2>/dev/null || saved=$max
+    echo "$saved" > "$B/brightness" 2>/dev/null || true
+    echo on > "$ST"
+fi
 EOS
     install -Dm755 /dev/stdin "$MNT/usr/local/bin/raphael-volume" <<'EOS'
 #!/bin/sh
