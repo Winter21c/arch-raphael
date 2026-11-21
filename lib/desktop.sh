@@ -112,7 +112,7 @@ EOS
     cat > "$MNT/etc/systemd/system/raphael-powerkey.service" <<'EOS'
 [Unit]
 Description=Power key -> screen toggle (pm8941_pwrkey)
-After=multi-user.target
+After=local-fs.target systemd-udevd.service
 
 [Service]
 Type=simple
