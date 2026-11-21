@@ -21,6 +21,27 @@ Name=wlan0
 EOF
 
     # ---- 音频（WirePlumber，手机小缓冲）---------------------------------
+    # 默认 sink 固定为扬声器（Speaker/TFA9874）：提升其 session 优先级，
+    # 否则 PipeWire 可能把 Headphone 当默认，导致"没声音"。
+    cat > "$MNT/etc/wireplumber/wireplumber.conf.d/52-raphael-default-sink.conf" <<'EOF'
+monitor.alsa.rules = [
+  {
+    matches = [ { node.name = "~alsa_output.*Speaker.*" } ]
+    actions = { update-props = { priority.session = 2000 } }
+  }
+  {
+    matches = [ { node.name = "~alsa_output.*Headphone.*" } ]
+    actions = { update-props = { priority.session = 1000 } }
+  }
+]
+EOF
+
+    # greeter 会话不要再起一套 PipeWire/WirePlumber（会和用户会话抢同一张声卡）
+    install -d "$MNT/var/lib/greetd/.config/systemd/user"
+    for unit in pipewire.service pipewire.socket pipewire-pulse.service pipewire-pulse.socket wireplumber.service; do
+        ln -sfn /dev/null "$MNT/var/lib/greetd/.config/systemd/user/$unit"
+    done
+
     install -d "$MNT/etc/wireplumber/wireplumber.conf.d"
     cat > "$MNT/etc/wireplumber/wireplumber.conf.d/51-raphael.conf" <<'EOF'
 monitor.alsa.rules = [
