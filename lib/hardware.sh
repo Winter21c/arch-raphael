@@ -171,7 +171,10 @@ EOF
     # 并抢先绑定 i2c 0-0034，导致功放不被正确初始化 -> 扬声器无声。
     # 这里安装自建的 snd-soc-tfa9874.ko（源码 overlay/modules/tfa9874.c），
     # 屏蔽旧驱动并让新驱动在声卡创建前加载。
-    if [ -f "$REPO_DIR/overlay/modules/snd-soc-tfa9874.ko" ]; then
+    local tfa_ko="$REPO_DIR/overlay/modules/snd-soc-tfa9874.ko"
+    if [ -f "$tfa_ko" ] && ! modinfo "$tfa_ko" 2>/dev/null | grep -q "vermagic: *$KERNEL_VERSION_STR"; then
+        warn "snd-soc-tfa9874.ko 的 vermagic 与 $KERNEL_VERSION_STR 不符（需按该内核重编），已跳过安装"
+    elif [ -f "$tfa_ko" ]; then
         install -Dm644 "$REPO_DIR/overlay/modules/snd-soc-tfa9874.ko"             "$MNT/lib/modules/$KERNEL_VERSION_STR/kernel/sound/soc/codecs/snd-soc-tfa9874.ko"
         chroot_sh "depmod -a $KERNEL_VERSION_STR" 2>/dev/null || true
         install -d "$MNT/etc/modprobe.d" "$MNT/etc/modules-load.d"
