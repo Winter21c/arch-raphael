@@ -64,3 +64,28 @@ ABL → U-Boot(boot 分区) → cache 分区 FAT32(systemd-boot)
 - 源码：`Winter21c/arch-raphael`（`main`）
 - 构建：`Winter21c/arch-raphael-build`（`workflow_dispatch`；产物 = rootfs + cache + u-boot）
 - 本地自检：`bash tools/verify.sh` → PASS 83 / WARN 0 / FAIL 0
+
+## 内核来源与版本对不上（重要）
+
+CI 与本地构建使用的内核 deb 是：
+
+```
+cache/kernel/7.3/linux-image.deb
+Package: linux-image-7.3.0-rc5-sm8150-gc033da1fc4fe
+Version: 7.3.0~rc5-gc033da1fc4fe-1
+```
+
+也就是说 **CI 产物的内核是 `7.3.0-rc5-sm8150-gc033da1fc4fe`**，而设备上验证过的
+内核是 `7.3.0-raphael-g8611da3`（来自参考内核树 `linux-sm8150-7.3.0`）。
+
+两者是**不同的构建**，因此：
+
+- `overlay/modules/snd-soc-tfa9874.ko`（当前按 7.2 编的）在 CI 产物里会被
+  `lib/hardware.sh` 的 vermagic 守卫跳过 → **CI 镜像的扬声器功放不会被识别**；
+- 需要为每个目标内核各编一份 `snd-soc-tfa9874.ko`（7.3.0-rc5 与 7.3.0-raphael 都要）。
+
+建议的构建期做法（待实现）：
+1. 在 CI 里解包 `linux-image.deb` 得到 `/lib/modules/<kver>`；
+2. 用同版本内核头（`linux-headers.deb`）作为 kbuild 树，把 `overlay/modules/tfa9874.c`
+   以**外部模块**方式编译（`make -C <kbuild树> M=<临时目录> modules`）；
+3. 产出 `snd-soc-tfa9874-<kver>.ko` 并安装，vermagic 自然匹配。
