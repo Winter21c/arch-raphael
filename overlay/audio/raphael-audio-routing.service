@@ -1,0 +1,8 @@
+[Unit]
+Description=Re-assert Raphael Q6 audio routing (ACP 会把它复位)
+After=raphael-audio-init.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/raphael-audio-routing.sh
+TimeoutStartSec=45s

@@ -106,6 +106,13 @@ ExecStart=/usr/local/sbin/raphael-audio-route.sh
 WantedBy=multi-user.target
 EOF
 
+    # 复用参考项目验证过的路由脚本（DAPM 通路 + 耳机检测 + 扬声器走 MM1）
+    install -Dm755 "$REPO_DIR/overlay/audio/raphael-audio-routing.sh" "$MNT/usr/local/sbin/raphael-audio-routing.sh"
+    install -Dm644 "$REPO_DIR/overlay/audio/raphael-audio-routing.service" "$MNT/etc/systemd/system/raphael-audio-routing.service"
+    install -Dm644 "$REPO_DIR/overlay/audio/raphael-audio-routing.timer" "$MNT/etc/systemd/system/raphael-audio-routing.timer"
+    install -d "$MNT/etc/systemd/system/timers.target.wants"
+    ln -sfn /etc/systemd/system/raphael-audio-routing.timer "$MNT/etc/systemd/system/timers.target.wants/raphael-audio-routing.timer"
+
     # UCM verb 应用服务：alsaucm -c sm8150 set _verb HiFi 成功后，
     # WirePlumber 才会生成 Headphone(WCD9340)/Speaker(TFA9874) 两个 sink。
     cat > "$MNT/usr/local/sbin/raphael-audio-ucm.sh" <<'EOS'

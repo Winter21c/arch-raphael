@@ -1,0 +1,10 @@
+[Unit]
+Description=Keep Raphael audio routing (播放 + 麦克风) asserted every 2s
+
+[Timer]
+OnBootSec=25s
+OnUnitActiveSec=2s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target
