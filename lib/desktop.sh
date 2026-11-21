@@ -77,7 +77,44 @@ output "DSI-2" {
 
 // 登录界面也要能用虚拟键盘输入密码
 spawn-at-startup "squeekboard"
+
+// 硬件按键：电源键熄屏/亮屏、音量键调音量（niri 直接收到 KEY_POWER / KEY_VOLUMEUP 等）
+binds {
+    XF86PowerOff { spawn "/usr/local/bin/raphael-screen-toggle"; }
+    XF86AudioRaiseVolume { spawn "/usr/local/bin/raphael-volume" "up"; }
+    XF86AudioLowerVolume { spawn "/usr/local/bin/raphael-volume" "down"; }
+    XF86AudioMute { spawn "/usr/local/bin/raphael-volume" "mute"; }
+}
 EOF
+
+    # ---- 硬件按键辅助脚本（电源键熄屏/亮屏、音量键）--------------------
+    install -Dm755 /dev/stdin "$MNT/usr/local/bin/raphael-screen-toggle" <<'EOS'
+#!/bin/sh
+# 电源键：熄屏 / 亮屏。优先用 niri IPC，失败则直接改背光。
+set -u
+if command -v niri >/dev/null 2>&1 && niri msg version >/dev/null 2>&1; then
+    niri msg action power-off-monitors >/dev/null 2>&1 && exit 0
+fi
+# 兜底：切换背光 0 <-> 最大值
+for b in /sys/class/backlight/*; do
+    [ -e "$b/brightness" ] || continue
+    cur=$(cat "$b/brightness" 2>/dev/null || echo 0)
+    max=$(cat "$b/max_brightness" 2>/dev/null || echo 1)
+    if [ "$cur" -gt 0 ]; then echo 0 > "$b/brightness" 2>/dev/null; else echo "$max" > "$b/brightness" 2>/dev/null; fi
+done
+EOS
+    install -Dm755 /dev/stdin "$MNT/usr/local/bin/raphael-volume" <<'EOS'
+#!/bin/sh
+# 音量键：调整默认 sink 音量；没有 sink 时退回 ALSA
+set -u
+step=${RAPHAEL_VOLUME_STEP:-5}
+case "${1:-}" in
+    up)   wpctl set-volume @DEFAULT_AUDIO_SINK@ "${step}%+" 2>/dev/null || amixer -q -c 0 sset 'RX0 Digital' 5%+ ;;
+    down) wpctl set-volume @DEFAULT_AUDIO_SINK@ "${step}%-" 2>/dev/null || amixer -q -c 0 sset 'RX0 Digital' 5%- ;;
+    mute) wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle 2>/dev/null || true ;;
+    *)    echo "用法: $0 up|down|mute" >&2; exit 2 ;;
+esac
+EOS
 
     # ---- 6. 用户会话 niri 配置（默认横屏 + DMS + 虚拟键盘）--------------
     mkdir -p "$WORK_DIR/userconf/niri"
@@ -127,8 +164,13 @@ hotkey-overlay {
     skip-at-startup
 }
 
+
+// 硬件按键：电源键熄屏/亮屏、音量键调音量（niri 直接收到 KEY_POWER / KEY_VOLUMEUP 等）
 binds {
-    XF86PowerOff { spawn "niri" "msg" "action" "power-off-monitors"; }
+    XF86PowerOff { spawn "/usr/local/bin/raphael-screen-toggle"; }
+    XF86AudioRaiseVolume { spawn "/usr/local/bin/raphael-volume" "up"; }
+    XF86AudioLowerVolume { spawn "/usr/local/bin/raphael-volume" "down"; }
+    XF86AudioMute { spawn "/usr/local/bin/raphael-volume" "mute"; }
 }
 EOF
 

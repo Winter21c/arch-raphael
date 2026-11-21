@@ -85,6 +85,38 @@ ExecStart=/usr/local/sbin/raphael-audio-route.sh
 WantedBy=multi-user.target
 EOF
 
+    # UCM verb 应用服务：alsaucm -c sm8150 set _verb HiFi 成功后，
+    # WirePlumber 才会生成 Headphone(WCD9340)/Speaker(TFA9874) 两个 sink。
+    cat > "$MNT/usr/local/sbin/raphael-audio-ucm.sh" <<'EOS'
+#!/bin/sh
+set -u
+i=0
+while [ "$i" -lt 30 ]; do
+    if alsaucm -c sm8150 set _verb HiFi >/dev/null 2>&1; then
+        echo "raphael-audio-ucm: HiFi verb applied"
+        exit 0
+    fi
+    i=$((i+1)); sleep 1
+done
+echo "raphael-audio-ucm: failed to apply HiFi verb" >&2
+exit 1
+EOS
+    chmod 755 "$MNT/usr/local/sbin/raphael-audio-ucm.sh"
+
+    cat > "$MNT/etc/systemd/system/raphael-audio-ucm.service" <<'EOS'
+[Unit]
+Description=Apply ALSA UCM HiFi verb (driver name sm8150)
+After=sound.target raphael-audio-route.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/raphael-audio-ucm.sh
+
+[Install]
+WantedBy=multi-user.target
+EOS
+
     # ---- ALSA UCM 落位（按驱动名 sm8150 匹配）---------------------------
     # 实测：alsa-lib 的 ucm2 是按 ASoC 驱动名查找 UCM 的，不是按卡名。
     # 卡名是 "sm8150raphael"/"Raphael" 时都会 ENOENT(-2)，只有
@@ -198,7 +230,7 @@ WantedBy=multi-user.target
 UNIT
 
     if chroot_sh "command -v dnsmasq >/dev/null 2>&1"; then
-        svc_enable dnsmasq.service usb-ncm.service raphael-touch-reset.service raphael-audio-route.service
+        svc_enable dnsmasq.service usb-ncm.service raphael-touch-reset.service raphael-audio-route.service raphael-audio-ucm.service
     else
         warn "未安装 dnsmasq，USB 网络共享不可用"
     fi
