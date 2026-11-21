@@ -166,28 +166,6 @@ EOF
         log "ALSA UCM 已落位到 conf.d/sm8150（按驱动名匹配）"
     fi
 
-    # ---- 扬声器功放 TFA9874 ---------------------------------------------
-    # 内核 deb 只带 snd-soc-tfa9872（驱动名 tfa987x），它也会匹配 nxp,tfa9874
-    # 并抢先绑定 i2c 0-0034，导致功放不被正确初始化 -> 扬声器无声。
-    # 这里安装自建的 snd-soc-tfa9874.ko（源码 overlay/modules/tfa9874.c），
-    # 屏蔽旧驱动并让新驱动在声卡创建前加载。
-    local tfa_ko="$REPO_DIR/overlay/modules/snd-soc-tfa9874.ko"
-    if [ -f "$tfa_ko" ] && ! modinfo "$tfa_ko" 2>/dev/null | grep -q "vermagic: *$KERNEL_VERSION_STR"; then
-        warn "snd-soc-tfa9874.ko 的 vermagic 与 $KERNEL_VERSION_STR 不符（需按该内核重编），已跳过安装"
-    elif [ -f "$tfa_ko" ]; then
-        install -Dm644 "$REPO_DIR/overlay/modules/snd-soc-tfa9874.ko"             "$MNT/lib/modules/$KERNEL_VERSION_STR/kernel/sound/soc/codecs/snd-soc-tfa9874.ko"
-        chroot_sh "depmod -a $KERNEL_VERSION_STR" 2>/dev/null || true
-        install -d "$MNT/etc/modprobe.d" "$MNT/etc/modules-load.d"
-        printf 'blacklist snd-soc-tfa9872
-install snd-soc-tfa9872 /bin/true
-'             > "$MNT/etc/modprobe.d/raphael-tfa.conf"
-        printf 'snd-soc-tfa9874
-' > "$MNT/etc/modules-load.d/raphael-tfa.conf"
-        log "已安装 snd-soc-tfa9874.ko 并屏蔽 snd-soc-tfa9872"
-    else
-        warn "缺少 overlay/modules/snd-soc-tfa9874.ko，扬声器可能无声"
-    fi
-
     # ---- Venus VA-API 硬解（H.264/HEVC）----------------------------------
     install -d "$MNT/etc/environment.d"
     printf 'LIBVA_DRIVER_NAME=venus\n' > "$MNT/etc/environment.d/40-venus.conf"
@@ -311,3 +289,23 @@ EOF
 
     log "硬件适配完成"
 }
+
+# 安装自建的 TFA9874 功放驱动（必须在 kernel 阶段之后调用：需要 /lib/modules 已就绪）
+raphael_install_tfa_module() {
+    local ko="$REPO_DIR/overlay/modules/snd-soc-tfa9874.ko"
+    [ -f "$ko" ] || { warn "缺少 overlay/modules/snd-soc-tfa9874.ko，扬声器可能无声"; return 0; }
+    local kver
+    kver=$(ls "$MNT/lib/modules" 2>/dev/null | grep -vE '^(build|source)$' | sort -V | tail -1)
+    [ -n "$kver" ] || { warn "未找到已安装的内核模块目录，跳过功放驱动"; return 0; }
+    if ! modinfo "$ko" 2>/dev/null | grep -q "vermagic: *$kver"; then
+        warn "snd-soc-tfa9874.ko 的 vermagic 与 $kver 不符（需按该内核重编），已跳过"
+        return 0
+    fi
+    install -Dm644 "$ko" "$MNT/lib/modules/$kver/kernel/sound/soc/codecs/snd-soc-tfa9874.ko"
+    chroot_sh "depmod -a $kver" 2>/dev/null || true
+    install -d "$MNT/etc/modprobe.d" "$MNT/etc/modules-load.d"
+    printf 'blacklist snd-soc-tfa9872\ninstall snd-soc-tfa9872 /bin/true\n' > "$MNT/etc/modprobe.d/raphael-tfa.conf"
+    printf 'snd-soc-tfa9874\n' > "$MNT/etc/modules-load.d/raphael-tfa.conf"
+    log "已安装 snd-soc-tfa9874.ko（$kver）并屏蔽 snd-soc-tfa9872"
+}
+
