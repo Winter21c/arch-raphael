@@ -89,7 +89,10 @@ if command -v pactl >/dev/null 2>&1; then
   # ⚠️ 不要写成 timeout 8 as_user pactl ...: as_user 是 shell 函数, timeout 只能
   #   执行真实可执行文件, 会直接 127 (command not found), 整个 oneshot 判 failed。
   #   所以走 AU 环境变量, 直接对 sudo 套 timeout。
-  AU="sudo -u winter env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus"
+  # 用户/UID 由构建期注入（原脚本硬编码 winter/1000）
+  RUSER="${RAPHAEL_USER:-user}"
+  RUID=$(id -u "$RUSER" 2>/dev/null || echo 1001)
+  AU="sudo -u $RUSER env XDG_RUNTIME_DIR=/run/user/$RUID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$RUID/bus"
   # ⚠️ 不能用 awk '{print $NF}': profile 名是 "HiFi (Mic, Speaker)", 带空格,
   #    $NF 只会拿到 "Speaker)", 于是判定"当前不是 off 就不管", profile 卡死。
   #    要取冒号后面整段再去掉换行。
