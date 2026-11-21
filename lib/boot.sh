@@ -1,6 +1,79 @@
 #!/usr/bin/env bash
 # systemd-boot + 固定名引导条目（与 Nura / postmarketOS 一致）
 
+# ============================================================================
+# 生成 cache 分区镜像（U-Boot 链路的引导分区）
+#
+#   cache(FAT32) = EFI/BOOT/BOOTAA64.EFI(systemd-boot)
+#                  linux.efi(内核 Image / vmlinuz)
+#                  initramfs
+#                  dtbs/qcom/*.dtb
+#                  loader/loader.conf + loader/entries/raphael.conf
+#
+# 实测：raphael 原厂 ABL 会拒绝未签名的 boot.img（Load Error），
+# 因此正式链路是 ABL -> U-Boot(boot 分区) -> 本 cache 分区 -> 内核。
+# ============================================================================
+boot_build_cache() {
+    step "生成 cache 分区镜像（systemd-boot + linux.efi + initramfs + dtb）"
+
+    local cache_img="$WORK_DIR/cache.img"
+    local sd=""
+    local p
+    for p in "$MNT/usr/lib/systemd/boot/efi/systemd-bootaa64.efi" \
+             "$MNT/lib/systemd/boot/efi/systemd-bootaa64.efi"; do
+        [ -f "$p" ] && { sd="$p"; break; }
+    done
+    [ -n "$sd" ] || die "未找到 systemd-bootaa64.efi（请确认 systemd 已安装）"
+    [ -f "$WORK_DIR/vmlinuz" ] || die "缺少内核: $WORK_DIR/vmlinuz"
+    [ -f "$WORK_DIR/initrd.img" ] || die "缺少 initramfs（请先执行 initramfs 阶段）"
+
+    # 找 dtb：优先内核包里的 qcom/*，其次 boot 下已安装的
+    local dtb_src=""
+    for p in "$MNT"/usr/lib/modules/*/dtbs/qcom "$MNT/boot/dtbs/qcom" "$MNT/usr/lib/linux-image-"*/qcom; do
+        [ -d "$p" ] && { dtb_src="$p"; break; }
+    done
+    [ -n "$dtb_src" ] || die "找不到 qcom 设备树目录"
+
+    rm -f "$cache_img"
+    truncate -s "$CACHE_SIZE" "$cache_img"
+    mkfs.vfat -F 32 -n "$CACHE_LABEL" "$cache_img" >/dev/null
+
+    local CLOOP CROOT
+    CLOOP=$(losetup --find --show "$cache_img")
+    CROOT="$WORK_DIR/cache-root"
+    rm -rf "$CROOT"; mkdir -p "$CROOT"
+    mount "$CLOOP" "$CROOT"
+
+    install -d "$CROOT/EFI/BOOT" "$CROOT/loader/entries" "$CROOT/dtbs/qcom"
+    install -Dm644 "$sd"                 "$CROOT/EFI/BOOT/BOOTAA64.EFI"
+    install -Dm644 "$WORK_DIR/vmlinuz"   "$CROOT/linux.efi"
+    install -Dm644 "$WORK_DIR/initrd.img" "$CROOT/initramfs"
+    cp -f "$dtb_src"/*.dtb "$CROOT/dtbs/qcom/" 2>/dev/null || true
+
+    cat > "$CROOT/loader/entries/raphael.conf" <<EOF
+title   $DEVICE_MODEL ($DISTRO_NAME)
+linux   /linux.efi
+initrd  /initramfs
+devicetree /dtbs/qcom/sm8150-xiaomi-raphael.dtb
+options $(img_cmdline)
+EOF
+
+    cat > "$CROOT/loader/loader.conf" <<EOF
+default  raphael.conf
+timeout  2
+editor   yes
+console-mode keep
+EOF
+
+    sync
+    umount "$CROOT"
+    losetup -d "$CLOOP"
+    rmdir "$CROOT" 2>/dev/null || true
+
+    install -Dm644 "$cache_img" "$REPO_DIR/cache-$DISTRO_ID-$KERNEL_VERSION.img"
+    log "cache 镜像: $REPO_DIR/cache-$DISTRO_ID-$KERNEL_VERSION.img ($(du -h "$cache_img" | cut -f1))"
+}
+
 boot_install() {
     step "配置 systemd-boot 引导"
 

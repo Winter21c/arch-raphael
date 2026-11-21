@@ -17,11 +17,15 @@ set -euo pipefail
 
 IMG=''
 BOOT=''
+CACHE=''
+UBOOT=''
 REBOOT=1
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --boot)      BOOT=${2:-}; shift 2 ;;
+        --cache)     CACHE=${2:-}; shift 2 ;;
+        --uboot)     UBOOT=${2:-}; shift 2 ;;
         --no-reboot) REBOOT=0; shift ;;
         -h|--help)   sed -n '3,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         -*)          echo "未知参数: $1（--help 看用法）" >&2; exit 2 ;;
@@ -56,6 +60,21 @@ if [ -n "$BOOT" ]; then
     fi
     echo "==> 刷写 $BOOT（$(du -h "$BOOT" | cut -f1)）到 boot 分区（内核+initramfs+DTB，ABL 直接引导）"
     fastboot flash boot "$BOOT"
+fi
+
+# U-Boot 链路：boot=U-Boot，cache=systemd-boot 引导链（实测唯一可用路径）
+if [ -n "$UBOOT" ] || [ -n "$CACHE" ]; then
+    [ -n "$UBOOT" ] || { echo "U-Boot 链路需要 --uboot <u-boot.img>" >&2; exit 1; }
+    [ -n "$CACHE" ] || { echo "U-Boot 链路需要 --cache <cache.img>" >&2; exit 1; }
+    [ -f "$UBOOT" ] || { echo "U-Boot 镜像不存在: $UBOOT" >&2; exit 1; }
+    [ -f "$CACHE" ] || { echo "cache 镜像不存在: $CACHE" >&2; exit 1; }
+
+    echo "==> 擦除 dtbo（保留原厂 dtbo 会干扰引导）"
+    fastboot erase dtbo || true
+    echo "==> 刷写 U-Boot 到 boot 分区（$(du -h "$UBOOT" | cut -f1)）"
+    fastboot flash boot "$UBOOT"
+    echo "==> 刷写引导链到 cache 分区（$(du -h "$CACHE" | cut -f1)）"
+    fastboot flash cache "$CACHE"
 fi
 
 SIZE=$(du -h "$IMG" | cut -f1)

@@ -132,7 +132,16 @@ stage_desktop()   { distro_desktop; desktop_install; }
 stage_hardware()  { hardware_overlay; }
 stage_kernel()    { kernel_install; }
 stage_initramfs() { distro_initramfs; }
-stage_boot()      { boot_install; boot_build_android; }
+stage_boot() {
+    # 实测：raphael 原厂 ABL 会拒绝未签名 boot.img（Load Error），
+    # 因此默认 uboot 链路：U-Boot 放 boot 分区，cache 分区放 systemd-boot 引导链。
+    if [ "${BOOT_CHAIN:-uboot}" = "abl" ]; then
+        boot_install
+        boot_build_android
+    else
+        boot_build_cache
+    fi
+}
 stage_verify()    { verify_image; }
 stage_finalize()  { finalize_image; }
 

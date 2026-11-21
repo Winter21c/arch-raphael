@@ -21,7 +21,40 @@ img_ensure_part_nodes() {
     done
 }
 
+# 扁平 btrfs：整块 userdata 直接就是一个 btrfs（无嵌套 GPT）。
+# U-Boot 链路（BOOT_CHAIN=uboot）用这个布局，rootflags=subvol=@ 直接生效。
+img_create_flat() {
+    step "创建扁平 btrfs 镜像 (大小 $IMAGE_SIZE)"
+    local old old_list
+    old_list=$(losetup -j "$IMAGE_PATH" -O NAME -n 2>/dev/null || true)
+    for old in $old_list; do losetup -d "$old" 2>/dev/null || true; done
+    rm -f "$IMAGE_PATH"
+    truncate -s "$IMAGE_SIZE" "$IMAGE_PATH"
+
+    mkfs.btrfs -f -q -L "$ROOT_LABEL" -U "$ROOT_UUID" "$IMAGE_PATH"
+    LOOP=$(losetup --find --show "$IMAGE_PATH")
+    log "loop 设备: $LOOP（扁平 btrfs，无分区表）"
+
+    mkdir -p "$MNT"
+    mount "$LOOP" "$MNT"
+    btrfs subvolume create "$MNT/@" >/dev/null
+    btrfs subvolume create "$MNT/@home" >/dev/null
+    local subid
+    subid=$(btrfs subvolume list "$MNT" | awk '/path @$/{print $2}')
+    [ -n "$subid" ] && btrfs subvolume set-default "$subid" "$MNT" >/dev/null 2>&1 || true
+    umount "$MNT"
+
+    mount -o "$BTRFS_OPTS" "$LOOP" "$MNT"
+    mkdir -p "$MNT/home" "$MNT/boot" "$MNT/var" "$MNT/etc"
+    mount -o "$BTRFS_HOME_OPTS" "$LOOP" "$MNT/home"
+    log "扁平 btrfs：/@ 与 /@home 就绪（/boot 由 cache 分区提供）"
+}
+
 img_create() {
+    if [ "${ROOTFS_LAYOUT:-gpt}" = "flat" ]; then
+        img_create_flat
+        return 0
+    fi
     step "创建 GPT 镜像 (大小 $IMAGE_SIZE, boot $BOOT_SIZE, 扇区 $SECTOR_SIZE)"
     # 只清理与本镜像相关的旧 loop 设备（不要 losetup -D，会误卸宿主机其它 loop 挂载）
     local old old_list
@@ -82,7 +115,9 @@ img_umount() {
         warn "镜像根仍被挂载，跳过 btrfs 校验与 loop 清理（镜像可能不完整）"
         return 0
     fi
-    if btrfs check --readonly "$LOOP"p2 >/dev/null 2>&1; then
+    local dev="$LOOP"
+    [ -e "${LOOP}p2" ] && dev="${LOOP}p2"
+    if btrfs check --readonly "$dev" >/dev/null 2>&1; then
         log "btrfs 只读校验通过"
     else
         warn "btrfs check 有输出（常见为 extent 告警，可忽略）"

@@ -24,7 +24,15 @@ finalize_image() {
         _chown_artifacts "$base"
     fi
 
-    # boot image（ABL 直接引导用）与校验和
+    # cache 分区镜像（U-Boot 链路：systemd-boot + 内核 + initramfs + dtb）
+    local cacheimg="cache-$DISTRO_ID-$KERNEL_VERSION.img"
+    if [ -f "$REPO_DIR/$cacheimg" ]; then
+        ( cd "$REPO_DIR" && sha256sum "$cacheimg" | tee "$cacheimg.sha256" )
+        [ -n "${SUDO_UID:-}" ] && chown "$SUDO_UID:${SUDO_GID:-$SUDO_UID}" "$REPO_DIR/$cacheimg" "$REPO_DIR/$cacheimg.sha256" 2>/dev/null
+        log "cache 镜像: $cacheimg"
+    fi
+
+    # boot image（ABL 直接引导用，仅 BOOT_CHAIN=abl）与校验和
     local bootimg="boot-$DISTRO_ID-$KERNEL_VERSION.img"
     if [ -f "$REPO_DIR/$bootimg" ]; then
         ( cd "$REPO_DIR" && sha256sum "$bootimg" | tee "$bootimg.sha256" )

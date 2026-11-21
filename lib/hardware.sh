@@ -42,6 +42,26 @@ monitor.alsa.rules = [
 ]
 EOF
 
+    # ---- ALSA UCM 兜底落位 ----------------------------------------------
+    # 内核把声卡命名为 "Raphael"（来自 DTB model），而 alsa-ucm-conf 的官方包是按
+    # "sm8150_raphael"/长名匹配的。这里把随内核 deb 附带的 UCM 复制到 alsa-lib
+    # 可能查找的三条路径，尽量让路由能被加载（实测仍有 -2，见 docs/HARDWARE.md）。
+    if [ -d "$MNT/usr/share/alsa/ucm2/Raphael" ]; then
+        install -d "$MNT/usr/share/alsa/ucm/Raphael" "$MNT/usr/share/alsa/ucm2/conf.d/Raphael"
+        cp -f "$MNT/usr/share/alsa/ucm2/Raphael/"*.conf "$MNT/usr/share/alsa/ucm/Raphael/" 2>/dev/null || true
+        cp -f "$MNT/usr/share/alsa/ucm2/Raphael/"*.conf "$MNT/usr/share/alsa/ucm2/conf.d/Raphael/" 2>/dev/null || true
+        # HiFi.conf 是 UCM2 语法，外层要用 Syntax 4 才能被 ucm2 加载器导入
+        cat > "$MNT/usr/share/alsa/ucm2/conf.d/Raphael/Raphael.conf" <<'EOF'
+Syntax 4
+
+SectionUseCase."HiFi" {
+	File "HiFi.conf"
+	Comment "HiFi quality Music"
+}
+EOF
+        log "ALSA UCM 已落位到 ucm/、ucm2/、ucm2/conf.d/ 三处（卡名 Raphael）"
+    fi
+
     # ---- Venus VA-API 硬解（H.264/HEVC）----------------------------------
     install -d "$MNT/etc/environment.d"
     printf 'LIBVA_DRIVER_NAME=venus\n' > "$MNT/etc/environment.d/40-venus.conf"
