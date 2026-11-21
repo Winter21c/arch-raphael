@@ -63,3 +63,25 @@ CONFIG_BT_QCA=m
   耳机/扬声器二选一、并保活采集路由；不要改成无条件写入（会打断正在播放的流）。
 - WirePlumber 固定 Speaker 为默认 sink（`priority.session=2000`）。
 - greeter 会话已 mask pipewire/wireplumber，避免与用户会话抢同一张声卡。
+
+### 7.3 内核对照实验（已就绪，未切换）
+
+设备 cache 分区已备好（默认启动项仍是可用的 7.2）：
+
+| 文件 | 说明 |
+|---|---|
+| `/boot/linux73.efi` | 7.3.0-raphael-g8611da3 Image（27,703,808 B，来自参考内核树） |
+| `/boot/loader/entries/arch73.conf` | 独立启动项，指向 linux73.efi + 现有 initramfs + 音频补丁 DTB |
+| `/lib/modules/7.3.0-raphael` | 与之匹配的模块集（含 snd-soc-tfa9874.ko） |
+
+切换方式（二选一）：
+- 开机时在 systemd-boot 菜单（`timeout 2`）里直接选 `Arch Linux (7.3.0-raphael 测试)`；
+- 或 `sed -i 's/^default.*/default arch73.conf/' /boot/loader/loader.conf` 后重启。
+
+回滚：把 `default` 改回 `newarch.conf`（当前的 7.2 配置）。
+
+判据（客观）：播放时读取功放状态寄存器，应当**变化**：
+```
+i2cget -y -f 0 0x34 0x00 w     # 静默 vs 播放中
+```
+7.2 上实测恒为 `0x1800`（不变）→ 功放未运行 → 无声。
