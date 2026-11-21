@@ -89,3 +89,7 @@ Version: 7.3.0~rc5-gc033da1fc4fe-1
 2. 用同版本内核头（`linux-headers.deb`）作为 kbuild 树，把 `overlay/modules/tfa9874.c`
    以**外部模块**方式编译（`make -C <kbuild树> M=<临时目录> modules`）；
 3. 产出 `snd-soc-tfa9874-<kver>.ko` 并安装，vermagic 自然匹配。
+
+## 设备恢复
+
+设备起不来时见 [docs/RECOVERY.md](docs/RECOVERY.md)（含 fastboot 进入、cache 镜像重建、三条铁律）。
