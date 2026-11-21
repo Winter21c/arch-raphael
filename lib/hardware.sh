@@ -292,15 +292,37 @@ EOF
 
 # 安装自建的 TFA9874 功放驱动（必须在 kernel 阶段之后调用：需要 /lib/modules 已就绪）
 raphael_install_tfa_module() {
-    local ko="$REPO_DIR/overlay/modules/snd-soc-tfa9874.ko"
-    [ -f "$ko" ] || { warn "缺少 overlay/modules/snd-soc-tfa9874.ko，扬声器可能无声"; return 0; }
-    local kver
+    local kver tfa_src="$REPO_DIR/overlay/modules/tfa9874.c" ko=""
     kver=$(ls "$MNT/lib/modules" 2>/dev/null | grep -vE '^(build|source)$' | sort -V | tail -1)
     [ -n "$kver" ] || { warn "未找到已安装的内核模块目录，跳过功放驱动"; return 0; }
-    if ! modinfo "$ko" 2>/dev/null | grep -q "vermagic: *$kver"; then
-        warn "snd-soc-tfa9874.ko 的 vermagic 与 $kver 不符（需按该内核重编），已跳过"
-        return 0
+
+    # 1) 优先用与该内核匹配的预编译模块
+    local pre="$REPO_DIR/overlay/modules/snd-soc-tfa9874-$kver.ko"
+    [ -f "$pre" ] && ko="$pre"
+    if [ -z "$ko" ]; then
+        local generic="$REPO_DIR/overlay/modules/snd-soc-tfa9874.ko"
+        if [ -f "$generic" ] && modinfo "$generic" 2>/dev/null | grep -q "vermagic: *$kver"; then
+            ko="$generic"
+        fi
     fi
+
+    # 2) 没有匹配的预编译模块时，用镜像里的 kbuild 树现场编译
+    if [ -z "$ko" ] && [ -f "$tfa_src" ] && [ -d "$MNT/lib/modules/$kver/build" ]; then
+        local tmp; tmp=$(mktemp -d)
+        cp "$tfa_src" "$tmp/tfa9874.c"
+        printf 'obj-m := snd-soc-tfa9874.o\nsnd-soc-tfa9874-y := tfa9874.o\n' > "$tmp/Makefile"
+        log "为 $kver 现场编译 snd-soc-tfa9874.ko"
+        if make -C "$MNT/lib/modules/$kver/build" M="$tmp" ARCH=arm64 LLVM=1 modules >/dev/null 2>&1 \
+           && [ -f "$tmp/snd-soc-tfa9874.ko" ]; then
+            ko="$tmp/snd-soc-tfa9874.ko"
+        else
+            warn "现场编译失败（需要与 $kver 对应的 linux-headers/kbuild 树）"
+        fi
+    fi
+
+    [ -n "$ko" ] || { warn "没有可用的 snd-soc-tfa9874.ko（$kver），扬声器可能无声"; return 0; }
+    modinfo "$ko" 2>/dev/null | grep -q "vermagic: *$kver" || { warn "$ko vermagic 与 $kver 不符，已跳过"; return 0; }
+
     install -Dm644 "$ko" "$MNT/lib/modules/$kver/kernel/sound/soc/codecs/snd-soc-tfa9874.ko"
     chroot_sh "depmod -a $kver" 2>/dev/null || true
     install -d "$MNT/etc/modprobe.d" "$MNT/etc/modules-load.d"

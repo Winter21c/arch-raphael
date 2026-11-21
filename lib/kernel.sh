@@ -19,6 +19,19 @@ kernel_install() {
     install -d "$MNT/lib/modules"
     cp -a "$x/lib/modules/$KVER" "$MNT/lib/modules/$KVER"
 
+    # 内核头（供外部模块现场编译，例如自建的 snd-soc-tfa9874）
+    if [ "${INSTALL_KERNEL_HEADERS:-1}" = "1" ] && [ -s "$k/linux-headers.deb" ]; then
+        local h="$WORK_DIR/kernel-headers"
+        rm -rf "$h"; mkdir -p "$h"
+        extract_deb "$k/linux-headers.deb" "$h"
+        [ -d "$h/usr/src" ] && { install -d "$MNT/usr/src"; cp -a "$h/usr/src/." "$MNT/usr/src/"; }
+        if [ -d "$h/lib/modules/$KVER/build" ]; then
+            install -d "$MNT/lib/modules/$KVER"
+            cp -a "$h/lib/modules/$KVER/build" "$MNT/lib/modules/$KVER/build"
+        fi
+        log "已安装内核头（$KVER，用于外部模块编译）"
+    fi
+
     # 设备树
     if [ -d "$x/usr/lib/linux-image-$KVER/qcom" ]; then
         install -d "$MNT/boot/dtbs/qcom"
