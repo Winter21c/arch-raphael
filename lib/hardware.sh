@@ -48,6 +48,23 @@ EOF
 
     # ---- USB NCM 网络共享（设备 172.16.42.1）-----------------------------
     install -d "$MNT/etc/dnsmasq.d"
+    # dnsmasq 默认配置不含 conf-dir，drop-in 不会被读取 → 会去抢 53 端口并与
+    # systemd-resolved 冲突（实测报 “failed to create listening socket for port 53”）
+    if [ -f "$MNT/etc/dnsmasq.conf" ]; then
+        grep -q '^conf-dir=/etc/dnsmasq.d' "$MNT/etc/dnsmasq.conf" 2>/dev/null \
+            || echo 'conf-dir=/etc/dnsmasq.d,*.conf' >> "$MNT/etc/dnsmasq.conf"
+    else
+        printf 'conf-dir=/etc/dnsmasq.d,*.conf\n' > "$MNT/etc/dnsmasq.conf"
+    fi
+
+    # dnsmasq 必须在 usb0 就绪之后启动，否则 DHCP 绑定不到接口
+    install -d "$MNT/etc/systemd/system/dnsmasq.service.d"
+    cat > "$MNT/etc/systemd/system/dnsmasq.service.d/10-usb-ncm.conf" <<'EOF'
+[Unit]
+After=usb-ncm.service
+Wants=usb-ncm.service
+EOF
+
     cat > "$MNT/etc/dnsmasq.d/usb-ncm.conf" <<'EOF'
 interface=usb0
 bind-dynamic
@@ -99,8 +116,25 @@ ExecStart=/usr/local/sbin/setup-usb-ncm.sh
 WantedBy=multi-user.target
 EOF
 
+    # ---- 触摸控制器冷启动自愈 -------------------------------------------
+    # gt9886 在冷启动时驱动 probe 过早，控制器会进入「有中断但不上报」的状态；
+    # 等供电稳定后重新 bind 一次 i2c 设备即可恢复（实测 IRQ 10 → 1384，事件正常）。
+    cat > "$MNT/etc/systemd/system/raphael-touch-reset.service" <<'UNIT'
+[Unit]
+Description=Re-bind Goodix GTX8 touch controller (cold-boot workaround)
+After=local-fs.target systemd-udevd.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'D=/sys/bus/i2c/drivers/goodix-gtx8; i=0; while [ $i -lt 150 ]; do [ "$(cat /sys/class/drm/card0-DSI-1/enabled 2>/dev/null)" = "enabled" ] && break; i=$((i+1)); sleep 1; done; i=0; while [ $i -lt 60 ]; do dev=$(ls /sys/bus/i2c/devices 2>/dev/null | grep -- "-005d$" | head -1); [ -n "$dev" ] && break; i=$((i+1)); sleep 1; done; if [ -z "$dev" ]; then echo "no goodix i2c device"; exit 1; fi; for n in 1 2 3; do echo "rebinding $dev (try $n)"; echo "$dev" > "$D/unbind" 2>/dev/null; sleep 1; echo "$dev" > "$D/bind" 2>/dev/null; sleep 12; done; echo "touch rebind done"'
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
     if chroot_sh "command -v dnsmasq >/dev/null 2>&1"; then
-        svc_enable dnsmasq.service usb-ncm.service
+        svc_enable dnsmasq.service usb-ncm.service raphael-touch-reset.service
     else
         warn "未安装 dnsmasq，USB 网络共享不可用"
     fi

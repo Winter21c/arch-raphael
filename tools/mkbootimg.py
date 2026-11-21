@@ -37,6 +37,10 @@ def unwrap_kernel(data):
     return data
 
 
+OS_VERSION = (13 << 25) | (0 << 18) | (0 << 11)   # Android 13.0.0
+OS_PATCH_LEVEL = ((2023 - 2000) << 4) | 12   # 2023-12
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--kernel", required=True)
@@ -79,22 +83,25 @@ def main():
     hdr += struct.pack("<I", a.tags_addr)
     hdr += struct.pack("<I", page)
     hdr += struct.pack("<I", 2)              # header_version
-    hdr += struct.pack("<I", 0)              # os_version
+    hdr += struct.pack("<I", OS_VERSION)     # os_version (A.B.C << 11)
+    hdr += struct.pack("<I", OS_PATCH_LEVEL) # os_patch_level ((year-2000)<<4 | month)
     hdr += a.name.encode()[:16].ljust(16, b"\x00")
     hdr += cmdline.ljust(512, b"\x00")
-    # id：kernel+ramdisk+second 的 SHA1
-    digest = hashlib.sha1(kernel + ramdisk + b"").digest()
+    # id：kernel+ramdisk+second（各自按 page 补齐）的 SHA1
+    def _pad(b):
+        return b + b"\x00" * ((page - len(b) % page) % page)
+    digest = hashlib.sha1(_pad(kernel) + _pad(ramdisk) + _pad(b"")).digest()
     hdr += digest.ljust(32, b"\x00")
     hdr += b"\x00" * 1024                    # extra_cmdline
     # v1 字段
     hdr += struct.pack("<I", 0)              # recovery_dtbo_size
     hdr += struct.pack("<Q", 0)              # recovery_dtbo_offset
-    hdr += struct.pack("<I", 1660)           # header_size
+    hdr += struct.pack("<I", 1664)           # header_size
     # v2 字段
     hdr += struct.pack("<I", len(dtb))
     hdr += struct.pack("<Q", a.dtb_addr)
 
-    assert len(hdr) == 1660, len(hdr)
+    assert len(hdr) == 1664, len(hdr)
 
     with open(a.output, "wb") as f:
         f.write(pad(bytes(hdr), page))
