@@ -55,7 +55,7 @@ case "$FAMILY" in
     debian)
         BASE_PKGS=(parted dosfstools btrfs-progs util-linux mount curl xz-utils zstd
                    binutils ca-certificates systemd kmod gdisk e2fsprogs file
-                   python3-yaml cpio)
+                   python3-yaml cpio dtc)
         ZIP_PKGS=(7zip p7zip-full)
         CROSS_PKGS=(qemu-user-static binfmt-support)
         UPDATE_CMD="apt-get update"
@@ -64,7 +64,7 @@ case "$FAMILY" in
     fedora)
         BASE_PKGS=(parted dosfstools btrfs-progs util-linux mount curl xz zstd
                    binutils ca-certificates systemd kmod gdisk e2fsprogs file
-                   python3-pyyaml cpio)
+                   python3-pyyaml cpio dtc)
         ZIP_PKGS=(7zip p7zip p7zip-plugins)
         CROSS_PKGS=(qemu-user-static)
         UPDATE_CMD=""
@@ -73,7 +73,7 @@ case "$FAMILY" in
     arch)
         BASE_PKGS=(parted dosfstools btrfs-progs util-linux mount curl xz zstd
                    binutils ca-certificates systemd kmod gptfdisk e2fsprogs file
-                   python-yaml cpio)
+                   python-yaml cpio dtc)
         ZIP_PKGS=(7zip)
         CROSS_PKGS=(qemu-user-static qemu-user-static-binfmt)
         UPDATE_CMD=""

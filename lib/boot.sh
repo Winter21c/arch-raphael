@@ -13,6 +13,37 @@
 # 实测：raphael 原厂 ABL 会拒绝未签名的 boot.img（Load Error），
 # 因此正式链路是 ABL -> U-Boot(boot 分区) -> 本 cache 分区 -> 内核。
 # ============================================================================
+
+# ============================================================================
+# 把 DTB 里声卡的 model 改成 UCM 期望的名字
+#
+# 内核用 DT 的 /sound model 作为 ALSA 卡名。alsa-ucm-conf 官方包按
+# "sm8150_raphael" 提供 UCM（ucm2/conf.d/sm8150_raphael/），而内核 deb 里的
+# DTB 写的是 "Raphael" → 卡名对不上，UCM 导入失败（-2），表现为
+#   MultiMedia1: ASoC: no backend DAIs enabled ... missing UCM profile
+# 构建期把 model 改成 sm8150_raphael 后，官方 UCM 就能直接命中。
+# ============================================================================
+patch_sound_model() {
+    local dtb="$1" model="${2:-sm8150_raphael}"
+    [ -f "$dtb" ] || return 0
+    if ! command -v fdtput >/dev/null 2>&1 || ! command -v fdtget >/dev/null 2>&1; then
+        warn "缺少 fdtput/fdtget（dtc 包），跳过声卡名补丁: $dtb"
+        return 0
+    fi
+    local cur
+    cur=$(fdtget "$dtb" /sound model 2>/dev/null || true)
+    if [ -z "$cur" ]; then
+        warn "DTB 中没有 /sound model，跳过: $dtb"
+        return 0
+    fi
+    [ "$cur" = "$model" ] && return 0
+    if fdtput -t s "$dtb" /sound model "$model" 2>/dev/null; then
+        log "DTB 声卡名: $cur → $model ($(basename "$dtb"))"
+    else
+        warn "改写 DTB 声卡名失败: $dtb"
+    fi
+}
+
 boot_build_cache() {
     step "生成 cache 分区镜像（systemd-boot + linux.efi + initramfs + dtb）"
 
@@ -49,6 +80,10 @@ boot_build_cache() {
     install -Dm644 "$WORK_DIR/vmlinuz"   "$CROOT/linux.efi"
     install -Dm644 "$WORK_DIR/initrd.img" "$CROOT/initramfs"
     cp -f "$dtb_src"/*.dtb "$CROOT/dtbs/qcom/" 2>/dev/null || true
+    local _d
+    for _d in "$CROOT"/dtbs/qcom/*.dtb; do
+        [ -f "$_d" ] && patch_sound_model "$_d"
+    done
 
     cat > "$CROOT/loader/entries/raphael.conf" <<EOF
 title   $DEVICE_MODEL ($DISTRO_NAME)
@@ -129,6 +164,7 @@ boot_build_android() {
     step "打包 Android boot image（内核 + initramfs + DTB）"
     local dtb="$MNT/boot/dtbs/qcom/sm8150-xiaomi-raphael.dtb"
     [ -f "$dtb" ] || die "缺少设备树: $dtb"
+    patch_sound_model "$dtb"
     [ -f "$WORK_DIR/vmlinuz" ] || die "缺少内核: $WORK_DIR/vmlinuz"
     [ -f "$WORK_DIR/initrd.img" ] || die "缺少 initramfs: $WORK_DIR/initrd.img"
 
