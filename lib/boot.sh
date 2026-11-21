@@ -58,6 +58,10 @@ boot_build_cache() {
     [ -f "$WORK_DIR/vmlinuz" ] || die "缺少内核: $WORK_DIR/vmlinuz"
     [ -f "$WORK_DIR/initrd.img" ] || die "缺少 initramfs（请先执行 initramfs 阶段）"
 
+    # DTB 来源优先用 overlay/dtb 里带音频补丁的那份（stock dtb 缺 slimcap/QUAT_MI2S
+    # 等路由节点，会导致 Q6 写入 EIO、扬声器无声）。
+    local ovl_dtb="$REPO_DIR/overlay/dtb/raphael-redmi-k20pro.dtb"
+
     # 找 dtb：优先内核包里的 qcom/*，其次 boot 下已安装的
     local dtb_src=""
     for p in "$MNT"/usr/lib/modules/*/dtbs/qcom "$MNT/boot/dtbs/qcom" "$MNT/usr/lib/linux-image-"*/qcom; do
@@ -80,6 +84,10 @@ boot_build_cache() {
     install -Dm644 "$WORK_DIR/vmlinuz"   "$CROOT/linux.efi"
     install -Dm644 "$WORK_DIR/initrd.img" "$CROOT/initramfs"
     cp -f "$dtb_src"/*.dtb "$CROOT/dtbs/qcom/" 2>/dev/null || true
+    if [ -f "$ovl_dtb" ]; then
+        install -Dm644 "$ovl_dtb" "$CROOT/dtbs/qcom/raphael-redmi-k20pro.dtb"
+        log "使用 overlay 音频补丁 DTB: raphael-redmi-k20pro.dtb"
+    fi
     local _d
     for _d in "$CROOT"/dtbs/qcom/*.dtb; do
         [ -f "$_d" ] && patch_sound_model "$_d"
