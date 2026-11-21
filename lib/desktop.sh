@@ -81,8 +81,8 @@ spawn-at-startup "squeekboard"
 // 硬件按键：电源键熄屏/亮屏、音量键调音量（niri 直接收到 KEY_POWER / KEY_VOLUMEUP 等）
 binds {
     XF86PowerOff { spawn "/usr/local/bin/raphael-screen-toggle"; }
-    XF86AudioRaiseVolume { spawn "/usr/local/bin/raphael-volume" "up"; }
-    XF86AudioLowerVolume { spawn "/usr/local/bin/raphael-volume" "down"; }
+    XF86AudioRaiseVolume { spawn "/usr/local/bin/raphael-volume" "down"; }
+    XF86AudioLowerVolume { spawn "/usr/local/bin/raphael-volume" "up"; }
     XF86AudioMute { spawn "/usr/local/bin/raphael-volume" "mute"; }
 }
 EOF
@@ -214,8 +214,8 @@ hotkey-overlay {
 // 硬件按键：电源键熄屏/亮屏、音量键调音量（niri 直接收到 KEY_POWER / KEY_VOLUMEUP 等）
 binds {
     XF86PowerOff { spawn "/usr/local/bin/raphael-screen-toggle"; }
-    XF86AudioRaiseVolume { spawn "/usr/local/bin/raphael-volume" "up"; }
-    XF86AudioLowerVolume { spawn "/usr/local/bin/raphael-volume" "down"; }
+    XF86AudioRaiseVolume { spawn "/usr/local/bin/raphael-volume" "down"; }
+    XF86AudioLowerVolume { spawn "/usr/local/bin/raphael-volume" "up"; }
     XF86AudioMute { spawn "/usr/local/bin/raphael-volume" "mute"; }
 }
 EOF
