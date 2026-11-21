@@ -85,3 +85,22 @@ CONFIG_BT_QCA=m
 i2cget -y -f 0 0x34 0x00 w     # 静默 vs 播放中
 ```
 7.2 上实测恒为 `0x1800`（不变）→ 功放未运行 → 无声。
+
+### 7.3 内核实验：第一次失败与修正（2026-11）
+
+**第一次失败**：只替换了 Image（`linux73.efi`）与 `/lib/modules/7.3.0-raphael`，
+但 `arch73.conf` 仍用**为 7.2 构建的 initramfs** → initramfs 阶段加载模块失败，
+设备无 USB 网卡、无 SSH（只能物理长按电源 + 启动菜单选回 `newarch.conf`）。
+
+**教训**：换内核必须同时换 initramfs（模块必须与内核版本一致）。
+
+**修正**：本地已离线构建好 7.3 的 initramfs（15 MB，zstd）：
+```sh
+losetup --find --show /tmp/rootfs-flat.img      # 扁平 btrfs，直接挂载 subvol=@
+mount -o subvol=@ /dev/loopX /tmp/rootmnt
+cp -a <7.3 模块目录> /tmp/rootmnt/lib/modules/7.3.0-raphael
+chroot /tmp/rootmnt mkinitcpio -k 7.3.0-raphael -g /boot/initramfs73
+```
+部署：把 `initramfs73` 放进 cache 分区，`arch73.conf` 的 `initrd` 改为 `/initramfs73`。
+
+**恢复优先级**：任何情况下先把 `/boot/loader/loader.conf` 的 `default` 改回 `newarch.conf`。
