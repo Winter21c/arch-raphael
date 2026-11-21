@@ -1,76 +1,66 @@
-# 项目状态（截至第 15 轮）
+# 项目状态（真机实测）
 
-> 结论：**构建设施已完成并全部实跑通过**；剩下唯一未完成项是**真机刷入 + 驱动逐项验证**，
-> 该项被硬件阻塞：红米 K20 Pro 自第 2 轮起不再出现在 USB 上（`lsusb` 无 `18d1/05c6`）。
+目标设备：Redmi K20 Pro（raphael / SM8150），U-Boot 引导链。
 
-## 1. 已交付并验证
+## 引导链（设备上唯一验证可用的顺序）
 
-### 两个仓库
+```
+ABL → U-Boot(boot 分区) → cache 分区 FAT32(systemd-boot)
+     → linux.efi + initramfs + dtbs/qcom/*.dtb → 扁平 btrfs rootfs(userdata)
+```
 
-| 仓库 | 作用 |
-|---|---|
-| [Winter21c/arch-raphael](https://github.com/Winter21c/arch-raphael) | 源码：`build.sh`、`lib/`、`distro/{arch,fedora}`、`tools/`、文档；CI 只做静态自检 |
-| [Winter21c/arch-raphael-build](https://github.com/Winter21c/arch-raphael-build) | 专用构建：从源码仓库 checkout，在 `ubuntu-24.04-arm` 构建并发布到自身 Release |
+- ABL 直接引导我们打的 `boot.img` **必失败**（`Failed to load/authenticate boot image`），不要再用
+- rootfs 必须是**扁平 btrfs**（无嵌套 GPT），`@` / `@home` 子卷，`rootflags=subvol=@,...`
+- 内核与 initramfs **必须同版本构建**（不一致会卡在 initramfs 阶段：无 USB、无 SSH）
+- DTB 必须用**能启动的那一份**：本地 `overlay/dtb/` 与 `/tmp` 下的副本都缺 `/memory` 节点，
+  用它们引导会黑屏；参考 cache 镜像里的 113,245 字节那份才可用
 
-### Release `latest` 产物
+## 构建期开关（`config/device.conf`）
 
-| 文件 | 大小 | 已验证 |
+| 变量 | 默认 | 说明 |
 |---|---|---|
-| `rootfs-arch-7.3.7z` | 1990 MB | 离线挂载逐项核对 |
-| `boot-arch-7.3.img` | 42 MB | kernel 28,180,480B，偏移 56 为 `ARMd`（原始 arm64 Image）；initramfs 内含 `raphael-subpartition` 诊断版 |
-| `rootfs-fedora-7.3.7z` | 1159 MB | 离线挂载逐项核对 |
-| `boot-fedora-7.3.img` | 47.4 MB | kernel 28,180,480B，偏移 56 为 `ARMd` |
+| `BOOT_CHAIN` | `uboot` | `uboot` = U-Boot + cache；`abl` = 旧 Android boot.img |
+| `ROOTFS_LAYOUT` | `flat` | `flat` = 扁平 btrfs；`gpt` = 嵌套 GPT（旧） |
+| `SCREEN_ROTATION` | `270` | niri `transform`；实测 90 会上下颠倒 |
+| `FBCON_ROTATE` | `3` | 与屏幕方向一致 |
+| `CACHE_SIZE` | `256M` | cache 引导分区镜像大小 |
 
-### 离线验证证据（挂载真实镜像得出，非推断）
+工具：`tools/mk-cache.sh` 一键生成 cache 镜像（含内核/initramfs 版本一致性检查与 DTB 结构告警）；
+`tools/flash.sh --uboot <u-boot.img> --cache <cache.img> <rootfs.img>` 完成整套刷写。
 
-- **引导链**：`default.target → graphical.target（Wants=display-manager.service）→ display-manager.service → greetd → dms-greeter --command niri`
-- **桌面**：`/usr/bin/dms`(83MB, DMS 2.1.2 QML)、`/usr/bin/qs → quickshell`、`/usr/lib64/qt6/qml/Quickshell`
-- **虚拟键盘**：Arch 用真 `squeekboard`(5.2MB ELF)；Fedora 用兼容包装 → `wvkbd-mobintl`
-- **横屏**：`/etc/skel/.config/niri/config.kdl` 与 `/etc/greetd/niri_overrides.kdl` 均含 `transform 90`
-- **文件系统**：fstab `subvol=@` / `@home` + ESP `1BF4-A32B`；首启 `raphael-growfs.service`
-- **initramfs 映射**：Arch 为 mkinitcpio hook + `/usr/lib/raphael-subpartition`；Fedora 为 dracut `pre-udev` hook `30-raphael-subpart.sh` + 同一脚本
-- **音频**：DT `sound { model = "Raphael" }` ↔ UCM `/usr/share/alsa/ucm2/Raphael/` ↔ 驱动 `SND_SOC_SM8150/WCD934X/WSA881X + QDSP6_*` ↔ 固件 `adsp.mbn`
-- **账号**：`root` / `user`(1001, wheel+video+input+render+audio) / `greeter`(962, /var/lib/greetd)
+## 真机已验证通过
 
-### 构建参数（CI 输入，均已实跑）
-
-`distro`(both/arch/fedora)、`kernel_version`、`image_size`、`compress`、
-`root_password`、`user_name`、`user_password`、`hostname`、`install_ime`、`source_repo`、`source_ref`。
-
-本地等价：`sudo ./build.sh arch|fedora [stage]`，凭据用 `ROOT_PASS=… USER_NAME=… USER_PASS=…` 覆盖。
-
-## 2. 唯一未完成：真机刷写与驱动验证
-
-设备需人工恢复（USB 端口复位无效，设备会直接消失）：
-
-1. **长按电源 10~15 秒**强制断电（屏幕全黑后松手）；
-2. **按住音量下 + 电源** 进入 fastboot；
-3. 插 USB。
-
-然后一条命令完成刷机：
-
-```bash
-sudo tools/flash.sh --boot boot-arch-7.3.img rootfs.img   # 预检 boot 分区容量 → 刷 boot → 刷 userdata → 重启
-tools/wait-boot.sh                                        # 等 172.16.42.1 SSH（自动 DHCP + 每 20s 重试）
-tools/device-test.sh --touch --sound                      # 9 组 32 项：系统/根fs/显示/触控/音频/WiFi+BT/电池/桌面/日志
-```
-
-若起不来：屏幕会打印 `loglevel=7` 的内核日志，以及我们加的诊断行
-
-```
-raphael: expected root UUID: ee8d3593-...
-raphael:   /dev/loop0p1  uuid=1BF4-A32B label=Boot type=vfat
-raphael:   /dev/loop0p2  uuid=ee8d3593-... label=Root type=btrfs
-```
-
-拍照即可定位是「没映射上」「UUID 不匹配」还是「面板/GPU 未初始化」。
-
-## 3. 已知风险
-
-| 风险 | 说明 / 缓解 |
+| 项 | 证据 |
 |---|---|
-| `fastboot flash boot` 容量 | Arch 42MB、Fedora 47.4MB（分区约 64MB）；`flash.sh` 会先 `getvar partition-size:boot` 预检，超了直接报错不刷。 |
-| ABL 对 header v2 的支持 | raphael 为 Android 10 代 ABL，支持 v2+DTB；若仍拒绝，可改走 U-Boot + systemd-boot（镜像 ESP 里已备好 `EFI/BOOT/BOOTAA64.EFI`）。 |
-| 首次启动扩容 | initramfs 里 `parted resizepart 2 100%` + 首启 `btrfs filesystem resize max /`；若 GPT 备份头位置告警，parted 用 `-f` 处理，失败也不影响启动（只是不扩容）。 |
-| 基带 / 传感器 | `rmtfs/pd-mapper/hexagonrpcd` 在 Arch/Fedora 无官方包，代码按 `command -v` 降级；蜂窝与部分传感器可能不可用。 |
-| Fedora 桌面 | quickshell 源码构建最耗时；已补 `-DINSTALL_QMLDIR`，构建失败会自动回滚到仓库版并告警。 |
+| 扁平 btrfs 根 | `findmnt / → /dev/sda31[/@]`，`systemctl is-system-running = running` |
+| 触摸（Goodix GTX8） | 冷启动自愈服务 `raphael-touch-reset` 重新绑定 i2c `1-005d`；实测 12s 内 event 1392 字节 |
+| 显示 | `card0-DSI-1` connected+enabled，背光 1023/2047 |
+| 桌面/登录 | `greetd` → `niri`（dux-greeter）；`dms run` 桌面 |
+| 电源键 | 独立守护进程读 `pm8941_pwrkey`（仅 KEY_POWER 按下 value==1），背光状态机切换，不会卡死 |
+| 音量键 | niri bind（物理 +/- 与 keysym 相反，已交换） |
+| 自动登录 | greetd `[initial_session]` → 直接进桌面；账号 `user` / `1234` |
+| USB 网络 | `usb0` + dnsmasq DHCP（conf-dir 修复，避免抢 53 端口） |
+| Wi-Fi / 蓝牙 / 电池 | `wld0` 已连、`hci0` active、`qcom-battery 99% Full` |
+
+## 音频（未通过）
+
+已解决：
+- 功放驱动：自建 `snd-soc-tfa9874.ko`（源码 `overlay/modules/tfa9874.c`），
+  屏蔽会抢绑 `nxp,tfa9874` 的 `snd-soc-tfa9872`；`dmesg: TFA9874 detected, revision 0x0c74`
+- UCM：按**驱动名 `sm8150`** 匹配（`ucm2/conf.d/sm8150/sm8150.conf`，Syntax 4），`set _verb HiFi` rc=0
+- PipeWire：WirePlumber 生成 Speaker/Headphone，Speaker 设为默认；`pw-play` rc=0
+
+未解决（客观判据）：
+- `i2cget -y -f 0 0x34 0x00 w` 在静默与播放中**恒为 0x1800** → 功放未进入运行态 → 无声
+- 7.2 内核：`aplay hw:0,0` → `pcm_write EIO`；`AFE enable for port 0x4000 failed -22`
+- 7.3 内核：因为运行中的 DT 是 U-Boot 自带 stock DT（`sound/model = Xiaomi Redmi K20 Pro`），
+  `msm-snd-sm8150` 无绑定设备 → `no soundcards`
+
+下一步：让 7.3 用上带音频链路的 DTB（**保留能启动的那份，只做 fdtput 局部修改**），
+声卡注册后再用 i2c 判据确认功放是否运行。
+
+## 仓库
+
+- 源码：`Winter21c/arch-raphael`（`main`）
+- 构建：`Winter21c/arch-raphael-build`（`workflow_dispatch`；产物 = rootfs + cache + u-boot）
+- 本地自检：`bash tools/verify.sh` → PASS 83 / WARN 0 / FAIL 0
