@@ -93,3 +93,46 @@ Version: 7.3.0~rc5-gc033da1fc4fe-1
 ## 设备恢复
 
 设备起不来时见 [docs/RECOVERY.md](docs/RECOVERY.md)（含 fastboot 进入、cache 镜像重建、三条铁律）。
+
+## 真机最终结论（2026-11-22）
+
+### 7.2 内核 = 触摸 + 声音都正常（采用）
+
+```
+kernel 7.2.0-sm8150-ga1573649db08
+root   /dev/sda31[/@]                        （扁平 btrfs）
+card0  Raphael (sdm845 - Raphael)
+touch  /dev/input/event4 Goodix GTX8         ✅
+amp    tfa9874 (i2c 0-0034)                  ✅
+Speaker (TFA9874) 默认 sink，pw-play 出声    ✅（用户现场确认）
+```
+
+**关键差异：UCM 目录名要跟机器驱动名一致**
+
+| 内核 | 驱动名（`/proc/asound/cards` 中间那列） | UCM 需要 |
+|---|---|---|
+| 7.2.0-sm8150-ga1573649db08 | `sdm845` | `ucm2/conf.d/sdm845/sdm845.conf` |
+| 7.3.0-raphael-g8611da3 | `sm8150` | `ucm2/conf.d/sm8150/sm8150.conf` |
+
+构建期两个都落位（见 `lib/hardware.sh`），换内核不用改。
+
+### 7.3 内核 = 有声音但触摸不可用（不采用）
+
+```
+[GTP-ERR] goodix_ts_probe:1943 goodix device confirm failed[skip]
+goodix_ts goodix_ts.0: probe with driver goodix_ts failed with error -22
+```
+模块 `goodix_gtx8` 能加载、regulator 能开，但读不到芯片 ID，`i2c 1-005d` 始终不绑定，
+无输入节点。多次 rebind（含面板起来后）均失败。
+
+### 因此默认配置
+
+- `build.sh`：`KERNEL_VERSION=7.2`
+- 构建仓库 workflow：`kernel_version` 默认 `7.2`
+- cache 引导镜像必须包含 **与内核同版本的 initramfs** 和 **能启动的 DTB**
+  （可用备份 `out/pre-7.3-backup/boot-cache.img`，只改 root UUID）
+
+### 音量乱跳的修复
+
+`raphael-audio-routing.timer` 每 5 秒执行一次路由脚本会反复动 mixer/卡片 profile。
+处理：`systemctl stop/disable raphael-audio-routing.timer`，音量固定（如 0.7–0.85）。
